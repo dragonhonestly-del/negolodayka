@@ -1,0 +1,2967 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Don't Starve Together — Telegram Mini App</title>
+
+  <!-- 1. Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- 2. Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- 3. React 18 & ReactDOM 18 UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- 4. Babel Standalone для компиляции JSX в браузере -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #12100e;
+      touch-action: manipulation;
+    }
+    /* Кастомный скроллбар для модальных окон */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1c1917;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #78350f;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+    // ============================================================================
+    // 0. ВСТРОЕННЫЕ SVG-ИКОНКИ (АВТОНОМНАЯ ЗАМЕНА LUCIDE-REACT ДЛЯ GITHUB PAGES)
+    // ============================================================================
+    const IconBase = ({ className = "w-4 h-4", children }) => (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+      >
+        {children}
+      </svg>
+    );
+
+    const Sparkles = ({ className }) => (
+      <IconBase className={className}>
+        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+        <path d="M5 3v4" /><path d="M19 17v4" /><path d="M3 5h4" /><path d="M17 19h4" />
+      </IconBase>
+    );
+
+    const Wrench = ({ className }) => (
+      <IconBase className={className}>
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+      </IconBase>
+    );
+
+    const Utensils = ({ className }) => (
+      <IconBase className={className}>
+        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+        <path d="M7 2v20" />
+        <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+      </IconBase>
+    );
+
+    const Terminal = ({ className }) => (
+      <IconBase className={className}>
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" x2="20" y1="19" y2="19" />
+      </IconBase>
+    );
+
+    const Code = ({ className }) => (
+      <IconBase className={className}>
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </IconBase>
+    );
+
+    const Server = ({ className }) => (
+      <IconBase className={className}>
+        <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+        <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+        <line x1="6" x2="6.01" y1="6" y2="6" />
+        <line x1="6" x2="6.01" y1="18" y2="18" />
+      </IconBase>
+    );
+
+    const X = ({ className }) => (
+      <IconBase className={className}>
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </IconBase>
+    );
+
+    // ============================================================================
+    // 1. БАЗА ДАННЫХ СУЩНОСТЕЙ И КОНФИГУРАЦИЯ (GDD PREFABS & CONFIG)
+    // ============================================================================
+
+    const CHARACTERS = [
+      {
+        id: 'wilson',
+        name: 'Уилсон',
+        title: 'Ученый-джентльмен',
+        hp: 150,
+        hunger: 150,
+        sanity: 200,
+        perk: 'Отращивает великолепную бороду, которая защищает от зимнего холода.',
+        color: '#d97706',
+        hairColor: '#1f2937',
+        startItems: [{ id: 'flint', count: 2 }, { id: 'twigs', count: 2 }]
+      },
+      {
+        id: 'willow',
+        name: 'Уиллоу',
+        title: 'Поджигательница',
+        hp: 150,
+        hunger: 150,
+        sanity: 120,
+        perk: 'Иммунитет к огню. Начинает игру со своей верной Зажигалкой (вечный свет в руке).',
+        color: '#dc2626',
+        hairColor: '#111827',
+        startItems: [{ id: 'lighter', count: 1 }, { id: 'logs', count: 2 }]
+      },
+      {
+        id: 'wolfgang',
+        name: 'Вольфганг',
+        title: 'Силач',
+        hp: 200,
+        hunger: 300,
+        sanity: 200,
+        perk: 'При сытости > 225 входит в Могучую форму (Урон x2, Макс HP 300). Боится темноты.',
+        color: '#2563eb',
+        hairColor: '#78350f',
+        startItems: [{ id: 'meat', count: 2 }, { id: 'berries', count: 4 }]
+      },
+      {
+        id: 'wendy',
+        name: 'Венди',
+        title: 'Скорбящая сестра',
+        hp: 150,
+        hunger: 150,
+        sanity: 200,
+        perk: 'Призывает призрак сестры Абигейл (бьет врагов вокруг). Урон самой Венди снижен на 25%.',
+        color: '#9333ea',
+        hairColor: '#fde047',
+        startItems: [{ id: 'abigail_flower', count: 1 }, { id: 'petals', count: 6 }]
+      },
+      {
+        id: 'wx78',
+        name: 'WX-78',
+        title: 'Бездушный автоматонг',
+        hp: 150,
+        hunger: 150,
+        sanity: 150,
+        perk: 'Ест шестеренки для прокачки максимальных характеристик. Страдает от сырости весной.',
+        color: '#65a30d',
+        hairColor: '#71717a',
+        startItems: [{ id: 'gears', count: 2 }, { id: 'flint', count: 2 }]
+      }
+    ];
+
+    const ITEMS_DB = {
+      // Ресурсы
+      cutgrass: { name: 'Срезанная трава', icon: '🌿', type: 'resource', stack: 40, tags: { inedible: 1 } },
+      twigs: { name: 'Ветки', icon: '🥢', type: 'resource', stack: 40, tags: { inedible: 1 } },
+      logs: { name: 'Бревно', icon: '🪵', type: 'resource', stack: 20, fuel: 45, tags: { inedible: 1 } },
+      flint: { name: 'Кремень', icon: '🪨', type: 'resource', stack: 40 },
+      rocks: { name: 'Камень', icon: '🧱', type: 'resource', stack: 40 },
+      gold_nugget: { name: 'Золотой самородок', icon: '🪙', type: 'resource', stack: 20 },
+      silk: { name: 'Паутина', icon: '🕸️', type: 'resource', stack: 40 },
+      pig_skin: { name: 'Свиная шкура', icon: '🐽', type: 'resource', stack: 20 },
+      hound_tooth: { name: 'Клык гончей', icon: '🦷', type: 'resource', stack: 20 },
+      pinecone: { name: 'Шишка', icon: '🌰', type: 'seed', stack: 40 },
+      gears: { name: 'Шестеренки', icon: '⚙️', type: 'food', stack: 20, hp: 60, hunger: 75, sanity: 50, wxUpgrade: true },
+      abigail_flower: { name: 'Цветок Абигейл', icon: '🌺', type: 'special', stack: 1 },
+
+      // Еда и Кулинария
+      berries: { name: 'Ягоды', icon: '🍒', type: 'food', stack: 40, hp: 0, hunger: 9.5, sanity: 0, cookTo: 'roasted_berries', tags: { fruit: 0.5 } },
+      roasted_berries: { name: 'Жареные ягоды', icon: '🍓', type: 'food', stack: 40, hp: 1, hunger: 12.5, sanity: 0, tags: { fruit: 0.5 } },
+      carrot: { name: 'Морковь', icon: '🥕', type: 'food', stack: 40, hp: 1, hunger: 12.5, sanity: 0, cookTo: 'roasted_carrot', tags: { veggie: 1 } },
+      roasted_carrot: { name: 'Печеная морковь', icon: '🍠', type: 'food', stack: 40, hp: 3, hunger: 12.5, sanity: 0, tags: { veggie: 1 } },
+      petals: { name: 'Лепестки', icon: '🌸', type: 'food', stack: 40, hp: 1, hunger: 0, sanity: 0, tags: { veggie: 0.5 } },
+      meat: { name: 'Мясо', icon: '🥩', type: 'food', stack: 20, hp: 1, hunger: 25, sanity: -10, cookTo: 'cooked_meat', tags: { meat: 1 } },
+      cooked_meat: { name: 'Жареное мясо', icon: '🍖', type: 'food', stack: 20, hp: 3, hunger: 25, sanity: 0, tags: { meat: 1 } },
+      monster_meat: { name: 'Мясо монстра', icon: '🟣', type: 'food', stack: 20, hp: -20, hunger: 18, sanity: -15, cookTo: 'cooked_monster_meat', tags: { meat: 1, monster: 1 } },
+      cooked_monster_meat: { name: 'Жар. мясо монстра', icon: '🟪', type: 'food', stack: 20, hp: -3, hunger: 18, sanity: -10, tags: { meat: 1, monster: 1 } },
+      egg: { name: 'Яйцо', icon: '🥚', type: 'food', stack: 40, hp: 0, hunger: 9.5, sanity: 0, tags: { egg: 1 } },
+      spider_gland: { name: 'Паучья железа', icon: '🫀', type: 'food', stack: 20, hp: 8, hunger: 0, sanity: 0 },
+      deerclops_eyeball: { name: 'Глаз Циклопа', icon: '👁️', type: 'food', stack: 1, hp: 60, hunger: 75, sanity: -15 },
+
+      // Блюда из Казана (Crock Pot)
+      meatballs: { name: 'Тефтели', icon: '🧆', type: 'food', stack: 20, hp: 3, hunger: 62.5, sanity: 5 },
+      pierogi: { name: 'Вареники', icon: '🥟', type: 'food', stack: 20, hp: 40, hunger: 37.5, sanity: 5 },
+      ratatouille: { name: 'Рататуй', icon: '🥗', type: 'food', stack: 20, hp: 3, hunger: 25, sanity: 5 },
+      monster_lasagna: { name: 'Монстр-лазанья', icon: '🥘', type: 'food', stack: 20, hp: -20, hunger: 37.5, sanity: -20 },
+      wet_goop: { name: 'Мокрое месиво', icon: '💩', type: 'food', stack: 20, hp: 0, hunger: 0, sanity: 0 },
+
+      // Инструменты и Оружие (Слот Руки - hand) - исправлены дубли ключей icon
+      axe: { name: 'Топор', icon: '🪓', type: 'equip', slot: 'hand', damage: 27, tool: 'chop', durability: 100 },
+      pickaxe: { name: 'Кирка', icon: '⛏️', type: 'equip', slot: 'hand', damage: 27, tool: 'mine', durability: 100 },
+      shovel: { name: 'Лопата', icon: '🥄', type: 'equip', slot: 'hand', damage: 17, tool: 'dig', durability: 100 },
+      torch: { name: 'Факел', icon: '🔥', type: 'equip', slot: 'hand', damage: 17, lightRadius: 155, durability: 100 },
+      lighter: { name: 'Зажигалка Уиллоу', icon: '🕯️', type: 'equip', slot: 'hand', damage: 17, lightRadius: 145, durability: 999 },
+      spear: { name: 'Копье', icon: '🔱', type: 'equip', slot: 'hand', damage: 34, durability: 150 },
+
+      // Броня и Одежда (Слот Тела / Головы)
+      log_suit: { name: 'Деревянная броня', icon: '🛡️', type: 'equip', slot: 'body', armor: 0.8, durability: 450 },
+      backpack: { name: 'Рюкзак (+4 слота)', icon: '🎒', type: 'equip', slot: 'body', armor: 0, bonusSlots: 4 },
+      garland: { name: 'Венок из цветов', icon: '💐', type: 'equip', slot: 'head', sanityBonus: 1.5, insulation: 0 },
+      winter_hat: { name: 'Зимняя шапка', icon: '🧶', type: 'equip', slot: 'head', sanityBonus: 1.3, insulation: 120 },
+
+      // Постройки для размещения
+      campfire_item: { name: 'Костер', icon: '🏕️', type: 'structure', structureType: 'campfire' },
+      pit_fire_item: { name: 'Кострище', icon: '🌋', type: 'structure', structureType: 'pit_fire' },
+      science_machine_item: { name: 'Научная машина', icon: '⚗️', type: 'structure', structureType: 'science_machine' },
+      alchemy_engine_item: { name: 'Алхим. двигатель', icon: '🔬', type: 'structure', structureType: 'alchemy_engine' },
+      crockpot_item: { name: 'Казан (Crock Pot)', icon: '🍲', type: 'structure', structureType: 'crockpot' }
+    };
+
+    // Матрица рецептов крафта из GDD
+    const CRAFTING_RECIPES = [
+      // Инструменты
+      { id: 'axe', category: 'tools', result: 'axe', cost: { twigs: 1, flint: 1 }, station: 'none', desc: 'Рубит деревья. Может служить простым оружием.' },
+      { id: 'pickaxe', category: 'tools', result: 'pickaxe', cost: { twigs: 2, flint: 2 }, station: 'none', desc: 'Раскалывает валуны для добычи камня и золота.' },
+      { id: 'shovel', category: 'tools', result: 'shovel', cost: { twigs: 2, flint: 2 }, station: 'science_machine', desc: 'Позволяет выкапывать кусты и корни.' },
+
+      // Огонь и Свет
+      { id: 'torch', category: 'light', result: 'torch', cost: { cutgrass: 2, twigs: 2 }, station: 'none', desc: 'Портативный источник света в руку. Защищает от Чарли!' },
+      { id: 'campfire_item', category: 'light', result: 'campfire_item', cost: { logs: 2, cutgrass: 3 }, station: 'none', desc: 'Временный костер. Согревает, освещает и позволяет жарить еду.' },
+      { id: 'pit_fire_item', category: 'light', result: 'pit_fire_item', cost: { rocks: 8, logs: 2 }, station: 'science_machine', desc: 'Каменное кострище. Не исчезает, можно подкидывать дрова.' },
+
+      // Наука
+      { id: 'science_machine_item', category: 'science', result: 'science_machine_item', cost: { gold_nugget: 1, logs: 4, rocks: 4 }, station: 'none', desc: 'Открывает рецепты 1-го уровня. Прототип дает +15 Рассудка!' },
+      { id: 'alchemy_engine_item', category: 'science', result: 'alchemy_engine_item', cost: { logs: 6, rocks: 4, gold_nugget: 2 }, station: 'science_machine', desc: 'Продвинутая станция науки 2-го уровня.' },
+
+      // Выживание и Кулинария
+      { id: 'crockpot_item', category: 'survival', result: 'crockpot_item', cost: { rocks: 3, logs: 3, twigs: 4 }, station: 'science_machine', desc: 'Казан для варки сытных блюд (Тефтели, Вареники) из 4 ингредиентов.' },
+      { id: 'backpack', category: 'survival', result: 'backpack', cost: { cutgrass: 4, twigs: 4 }, station: 'science_machine', desc: 'Увеличивает вместимость инвентаря.' },
+      { id: 'garland', category: 'survival', result: 'garland', cost: { petals: 12 }, station: 'none', desc: 'Постепенно восстанавливает рассудок при ношении.' },
+      { id: 'winter_hat', category: 'survival', result: 'winter_hat', cost: { silk: 4, pig_skin: 1 }, station: 'science_machine', desc: 'Согревает суровой зимой и бережет рассудок.' },
+
+      // Бой
+      { id: 'spear', category: 'combat', result: 'spear', cost: { twigs: 2, cutgrass: 2, flint: 1 }, station: 'science_machine', desc: 'Острое копье (34 урона).' },
+      { id: 'log_suit', category: 'combat', result: 'log_suit', cost: { logs: 6, cutgrass: 2 }, station: 'science_machine', desc: 'Поглощает 80% входящего физического урона.' }
+    ];
+
+    // Генерация начального мира (Изометрические координаты 2400x2400)
+    const generateInitialWorld = () => {
+      const nodes = [];
+      const mobs = [];
+      let idCounter = 1;
+
+      const randRange = (min, max) => min + Math.random() * (max - min);
+      const distFromCenter = (x, y) => Math.hypot(x, y);
+
+      // Стартовый алтарь-портал Флоридский Постерн в центре (0,0)
+      nodes.push({
+        id: `node_${idCounter++}`,
+        type: 'portal',
+        name: 'Постерн Константы',
+        x: 0,
+        y: -60,
+        hp: 9999
+      });
+
+      // Распределение ресурсов по биомам
+      for (let i = 0; i < 190; i++) {
+        let x = randRange(-1300, 1300);
+        let y = randRange(-1300, 1300);
+        if (distFromCenter(x, y) < 110) continue; // Свободная поляна на спавне
+
+        // Определение биома по сектору карты
+        let type = 'grass';
+        const r = Math.random();
+
+        if (x < -250 && y < -150) {
+          // Каменистая пустошь (Золото и валуны)
+          type = r < 0.55 ? 'boulder' : r < 0.8 ? 'flint_ground' : 'sapling';
+        } else if (x > 200 && y < 200) {
+          // Густой Темный Лес
+          type = r < 0.65 ? 'evergreen' : r < 0.82 ? 'berry_bush' : 'flower';
+        } else {
+          // Луга (Стартовый биом)
+          if (r < 0.23) type = 'grass';
+          else if (r < 0.44) type = 'sapling';
+          else if (r < 0.59) type = 'evergreen';
+          else if (r < 0.72) type = 'berry_bush';
+          else if (r < 0.84) type = 'flower';
+          else if (r < 0.94) type = 'flint_ground';
+          else type = 'carrot_ground';
+        }
+
+        nodes.push({
+          id: `node_${idCounter++}`,
+          type,
+          x,
+          y,
+          harvested: false,
+          regrowDay: 0,
+          hp: type === 'evergreen' ? 5 : type === 'boulder' ? 6 : 1,
+          size: type === 'evergreen' ? (Math.random() > 0.3 ? 'large' : 'medium') : 'normal',
+          fuel: type === 'campfire' ? 100 : type === 'pit_fire' ? 140 : 0
+        });
+      }
+
+      // Гарантированные стартовые ресурсы прямо возле игрока
+      const starterNodes = [
+        { type: 'flint_ground', x: -75, y: 45 },
+        { type: 'flint_ground', x: 85, y: 55 },
+        { type: 'grass', x: -110, y: -30 },
+        { type: 'grass', x: -95, y: 80 },
+        { type: 'sapling', x: 110, y: -40 },
+        { type: 'sapling', x: 95, y: 95 },
+        { type: 'berry_bush', x: -45, y: 120 },
+        { type: 'carrot_ground', x: 45, y: 115 },
+        { type: 'flower', x: 65, y: -25 },
+        { type: 'evergreen', x: -155, y: -95, hp: 5, size: 'large' },
+        { type: 'evergreen', x: 165, y: -105, hp: 5, size: 'large' },
+        { type: 'boulder', x: -180, y: 120, hp: 6 }
+      ];
+
+      starterNodes.forEach(n => {
+        nodes.push({
+          id: `node_${idCounter++}`,
+          ...n,
+          harvested: false,
+          regrowDay: 0,
+          hp: n.hp || 1
+        });
+      });
+
+      // Начальные Мобы (FSM: Пауки и Свиньи)
+      const mobPositions = [
+        { type: 'pigman', x: -320, y: 260 },
+        { type: 'pigman', x: -390, y: 310 },
+        { type: 'pigman', x: 260, y: 290 },
+        { type: 'spider', x: 350, y: -220 },
+        { type: 'spider', x: 420, y: -280 },
+        { type: 'spider', x: -380, y: -320 },
+        { type: 'spider', x: 480, y: 120 }
+      ];
+
+      mobPositions.forEach((m, idx) => {
+        const isPig = m.type === 'pigman';
+        mobs.push({
+          id: `mob_${idx + 1}`,
+          type: m.type,
+          name: isPig ? 'Свинья' : 'Паук',
+          x: m.x,
+          y: m.y,
+          spawnX: m.x,
+          spawnY: m.y,
+          hp: isPig ? 250 : 100,
+          maxHp: isPig ? 250 : 100,
+          damage: isPig ? 33 : 20,
+          attackPeriod: isPig ? 2000 : 3000,
+          lastAttack: 0,
+          state: 'Idle', // Idle | Wander | TargetAcquired | Attack | Retreat
+          targetX: m.x,
+          targetY: m.y,
+          speed: isPig ? 82 : 95,
+          aggroRange: isPig ? 0 : 155,
+          allyTimer: 0
+        });
+      });
+
+      return { nodes, mobs };
+    };
+
+    // Алгоритм Казана (Crock Pot) согласно GDD
+    const evaluateCrockPotRecipe = (ingredientIds) => {
+      const tags = { meat: 0, veggie: 0, fruit: 0, monster: 0, egg: 0, inedible: 0 };
+
+      ingredientIds.forEach(id => {
+        const item = ITEMS_DB[id];
+        if (item && item.tags) {
+          Object.entries(item.tags).forEach(([k, v]) => {
+            tags[k] = (tags[k] || 0) + v;
+          });
+        } else {
+          tags.inedible += 1;
+        }
+      });
+
+      // 1. Проверка на несъедобные ветки/бревна
+      if (tags.inedible > 0) {
+        return {
+          result: 'wet_goop',
+          reason: 'Обнаружены несъедобные палки или ресурсы -> Мокрое месиво!'
+        };
+      }
+
+      // 2. Монстр-лазанья (Приоритет, если >= 2 мяса монстра)
+      if (tags.monster >= 2) {
+        return {
+          result: 'monster_lasagna',
+          reason: 'Слишком много мяса монстра (>= 2) -> Монстр-лазанья!'
+        };
+      }
+
+      // 3. Вареники (Pierogi): Meat >= 0.5, Egg >= 1, Veggie >= 0.5
+      if (tags.meat >= 0.5 && tags.egg >= 1 && tags.veggie >= 0.5) {
+        return {
+          result: 'pierogi',
+          reason: 'Идеальный рецепт: Мясо + Яйцо + Овощ -> Вареники (+40 HP)!'
+        };
+      }
+
+      // 4. Тефтели (Meatballs): Meat > 0.1
+      if (tags.meat >= 0.5) {
+        return {
+          result: 'meatballs',
+          reason: 'Мясная основа с наполнителями -> Сытные Тефтели (+62.5 Сытости)!'
+        };
+      }
+
+      // 5. Рататуй (Овощи/фрукты без мяса)
+      if (tags.veggie >= 0.5 || tags.fruit >= 1.5) {
+        return {
+          result: 'ratatouille',
+          reason: 'Растительные ингредиенты -> Овощной Рататуй!'
+        };
+      }
+
+      return {
+        result: 'wet_goop',
+        reason: 'Условия рецептов не совпали -> Мокрое месиво.'
+      };
+    };
+
+    // Круглый индикатор жизненного показателя (Сытость, Рассудок, Здоровье) в стиле DST
+    function VitalBadge({ label, value, max, color, icon, pulse }) {
+      const pct = Math.max(0, Math.min(100, (value / max) * 100));
+      return (
+        <div className={`flex flex-col items-center ${pulse ? 'animate-bounce' : ''}`}>
+          <div className="relative w-12 h-12 rounded-full bg-stone-950 border-2 border-amber-700/80 overflow-hidden flex items-center justify-center shadow-inner">
+            <div
+              className="absolute bottom-0 left-0 right-0 transition-all duration-300"
+              style={{ height: `${pct}%`, backgroundColor: color, opacity: 0.45 }}
+            />
+            <span className="relative z-10 text-lg leading-none">{icon}</span>
+            <span className="absolute bottom-0.5 z-10 text-[10px] font-extrabold text-white drop-shadow">
+              {value}
+            </span>
+          </div>
+          <span className="text-[9px] text-stone-400 mt-0.5 font-bold">{label}</span>
+        </div>
+      );
+    }
+
+    // ============================================================================
+    // 2. ГЛАВНЫЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ (TELEGRAM MINI APP)
+    // ============================================================================
+
+    function App() {
+      // Инициализация Telegram Mini App SDK при монтировании
+      useEffect(() => {
+        try {
+          if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+            if (window.Telegram.WebApp.setHeaderColor) {
+              window.Telegram.WebApp.setHeaderColor('#12100e');
+            }
+            if (window.Telegram.WebApp.setBackgroundColor) {
+              window.Telegram.WebApp.setBackgroundColor('#12100e');
+            }
+          }
+        } catch (err) {
+          console.warn('Telegram WebApp SDK init fallback:', err);
+        }
+      }, []);
+
+      // Экран выбора персонажа / Игровой процесс
+      const [selectedChar, setSelectedChar] = useState(null);
+      const [isDead, setIsDead] = useState(false);
+
+      // UI Модальные окна
+      const [activeTab, setActiveTab] = useState(null); // 'craft' | 'crockpot' | 'debug' | 'gdd_code'
+      const [craftCategory, setCraftCategory] = useState('all');
+      const [crockSlots, setCrockSlots] = useState([]);
+      const [timeSpeed, setTimeSpeed] = useState(1); // 1x или 6x ускорение для тестов
+      const [charlieFlash, setCharlieFlash] = useState(false);
+      const [toastMessages, setToastMessages] = useState([]);
+      const [joystickThumb, setJoystickThumb] = useState({ x: 0, y: 0 });
+
+      // Реактивное состояние HUD (обновляется из игрового цикла)
+      const [hudState, setHudState] = useState({
+        hp: 150,
+        maxHp: 150,
+        hunger: 150,
+        maxHunger: 150,
+        sanity: 200,
+        maxSanity: 200,
+        day: 1,
+        segment: 0, // 0..15 (16 сегментов в сутках)
+        phase: 'Day', // Day (0-7), Dusk (8-11), Night (12-15)
+        season: 'Autumn', // Autumn | Winter | Spring | Summer
+        temp: 20, // Температура тела
+        wetness: 0, // Влажность весной
+        inLight: true,
+        nearScience: false,
+        nearAlchemy: false,
+        nearFire: false,
+        nearCrockpot: false,
+        mightyForm: false,
+        beardDays: 0,
+        contextAction: null,
+        inventory: [],
+        equip: { hand: null, body: null, head: null },
+        unlockedBlueprints: []
+      });
+
+      // Ссылка на Canvas и мутабельное ядро движка (для 60 FPS без ре-рендеров)
+      const canvasRef = useRef(null);
+      const keysRef = useRef({});
+      const joystickRef = useRef({ active: false, dx: 0, dy: 0, originX: 0, originY: 0, currX: 0, currY: 0 });
+      const engineRef = useRef(null);
+
+      // Добавление всплывающего сообщения (реплики персонажа в стиле DST)
+      const addFloatingLog = useCallback((text, color = '#fef08a') => {
+        const id = Date.now() + Math.random();
+        setToastMessages(prev => [...prev.slice(-3), { id, text, color }]);
+        setTimeout(() => {
+          setToastMessages(prev => prev.filter(m => m.id !== id));
+        }, 3200);
+      }, []);
+
+      // Инициализация новой игры за выбранного выжившего
+      const startNewGame = (charConfig) => {
+        const world = generateInitialWorld();
+        const startInv = charConfig.startItems.map(it => ({
+          id: it.id,
+          count: it.count,
+          durability: ITEMS_DB[it.id]?.durability || null
+        }));
+
+        // Если Уиллоу — сразу экипируем зажигалку в руку
+        let startHand = null;
+        const filteredInv = [];
+        startInv.forEach(item => {
+          if (item.id === 'lighter' && !startHand) {
+            startHand = item;
+          } else {
+            filteredInv.push(item);
+          }
+        });
+
+        engineRef.current = {
+          character: charConfig,
+          player: {
+            x: 0,
+            y: 30,
+            vx: 0,
+            vy: 0,
+            speed: 145,
+            facing: 1,
+            hp: charConfig.hp,
+            maxHp: charConfig.hp,
+            hunger: charConfig.hunger,
+            maxHunger: charConfig.hunger,
+            sanity: charConfig.sanity,
+            maxSanity: charConfig.sanity,
+            temp: 22,
+            wetness: 0,
+            equip: { hand: startHand, body: null, head: null },
+            inventory: filteredInv,
+            unlockedBlueprints: [],
+            treesChopped: 0,
+            lastAttackTime: 0,
+            attackAnim: 0,
+            abigailActive: charConfig.id === 'wendy'
+          },
+          time: {
+            totalSeconds: 0,
+            day: 1,
+            segment: 0,
+            segmentProgress: 0,
+            phase: 'Day',
+            season: 'Autumn',
+            charlieTimer: 0,
+            shadowTimer: 0,
+            lastHoundDay: 0,
+            deerclopsSpawned: false
+          },
+          nodes: world.nodes,
+          mobs: world.mobs,
+          particles: [],
+          floatingTexts: [
+            { x: 0, y: -15, text: '«Господи, главное — не голодать до темноты...»', color: '#fef08a', life: 3.5 }
+          ]
+        };
+
+        setIsDead(false);
+        setSelectedChar(charConfig);
+        setActiveTab(null);
+        setCrockSlots([]);
+      };
+
+      // Помощник: добавить предмет в инвентарь игрока
+      const givePlayerItem = (itemId, count = 1) => {
+        const eng = engineRef.current;
+        if (!eng) return false;
+        const dbItem = ITEMS_DB[itemId];
+        if (!dbItem) return false;
+
+        const maxSlots = eng.player.equip.body?.id === 'backpack' ? 14 : 11;
+
+        // Если предмет стакается
+        if (dbItem.stack && dbItem.stack > 1) {
+          const existing = eng.player.inventory.find(i => i.id === itemId && i.count < dbItem.stack);
+          if (existing) {
+            existing.count = Math.min(dbItem.stack, existing.count + count);
+            return true;
+          }
+        }
+
+        if (eng.player.inventory.length < maxSlots) {
+          eng.player.inventory.push({
+            id: itemId,
+            count,
+            durability: dbItem.durability || null
+          });
+          return true;
+        } else {
+          addFloatingLog('Инвентарь полон!', '#f87171');
+          return false;
+        }
+      };
+
+      // Помощник: списать ресурсы
+      const consumeResources = (costObj) => {
+        const eng = engineRef.current;
+        if (!eng) return false;
+
+        for (const [resId, needed] of Object.entries(costObj)) {
+          const totalHave = eng.player.inventory
+            .filter(i => i.id === resId)
+            .reduce((acc, i) => acc + i.count, 0);
+          if (totalHave < needed) return false;
+        }
+
+        for (const [resId, needed] of Object.entries(costObj)) {
+          let rem = needed;
+          for (let i = eng.player.inventory.length - 1; i >= 0; i--) {
+            if (eng.player.inventory[i].id === resId) {
+              const take = Math.min(rem, eng.player.inventory[i].count);
+              eng.player.inventory[i].count -= take;
+              rem -= take;
+              if (eng.player.inventory[i].count <= 0) {
+                eng.player.inventory.splice(i, 1);
+              }
+              if (rem <= 0) break;
+            }
+          }
+        }
+        return true;
+      };
+
+      // Определение сезона по номеру дня (GDD 2.2)
+      const getSeasonByDay = (day) => {
+        const cycleDay = ((day - 1) % 70) + 1;
+        if (cycleDay <= 20) return 'Autumn';
+        if (cycleDay <= 36) return 'Winter';
+        if (cycleDay <= 56) return 'Spring';
+        return 'Summer';
+      };
+
+      // Обработка лута при смерти моба (GDD Раздел 5)
+      const handleMobDeath = (mob) => {
+        const eng = engineRef.current;
+        if (!eng) return;
+
+        if (mob.type === 'spider') {
+          givePlayerItem('monster_meat', 1);
+          if (Math.random() < 0.5) givePlayerItem('silk', 1);
+          else givePlayerItem('spider_gland', 1);
+          eng.floatingTexts.push({ x: mob.x, y: mob.y - 20, text: 'Лут: Мясо монстра, Паутина', color: '#c084fc', life: 1.8 });
+        } else if (mob.type === 'pigman') {
+          givePlayerItem('meat', 1);
+          givePlayerItem('pig_skin', 1);
+          eng.floatingTexts.push({ x: mob.x, y: mob.y - 20, text: 'Лут: Мясо, Свиная шкура', color: '#f472b6', life: 1.8 });
+        } else if (mob.type === 'hound') {
+          givePlayerItem('monster_meat', 1);
+          givePlayerItem('hound_tooth', 1);
+          eng.floatingTexts.push({ x: mob.x, y: mob.y - 20, text: 'Лут: Клык гончей, Мясо монстра', color: '#f87171', life: 1.8 });
+        } else if (mob.type === 'shadow') {
+          eng.player.sanity = Math.min(eng.player.maxSanity, eng.player.sanity + 25);
+          eng.floatingTexts.push({ x: mob.x, y: mob.y - 20, text: 'Кошмар рассеян! +25 Рассудок', color: '#38bdf8', life: 2.0 });
+        } else if (mob.type === 'treeguard') {
+          givePlayerItem('logs', 6);
+          eng.floatingTexts.push({ x: mob.x, y: mob.y - 20, text: 'Энт повержен! +6 Бревен', color: '#4ade80', life: 2.2 });
+        } else if (mob.type === 'deerclops') {
+          givePlayerItem('deerclops_eyeball', 1);
+          givePlayerItem('meat', 4);
+          addFloatingLog('ЦИКЛОП-ОЛЕНЬ ПОВЕРЖЕН! Вы добыли Глаз Циклопа!', '#facc15');
+        }
+
+        eng.mobs = eng.mobs.filter(m => m.id !== mob.id);
+      };
+
+      // Контекстное действие: Сбор / Рубка / Добыча (Пробел или Кнопка)
+      const triggerContextAction = () => {
+        const eng = engineRef.current;
+        if (!eng || isDead) return;
+        const p = eng.player;
+
+        let nearest = null;
+        let minDist = 85;
+        eng.nodes.forEach(n => {
+          if (n.harvested || n.type === 'portal') return;
+          const d = Math.hypot(n.x - p.x, n.y - p.y);
+          if (d < minDist) {
+            minDist = d;
+            nearest = n;
+          }
+        });
+
+        if (!nearest) {
+          addFloatingLog('Рядом нет объектов для сбора', '#9ca3af');
+          return;
+        }
+
+        p.attackAnim = 0.25;
+        const handTool = ITEMS_DB[p.equip.hand?.id]?.tool;
+
+        // 1. Трава, Ветки, Ягоды, Цветы, Кремень, Морковь
+        if (['grass', 'sapling', 'berry_bush', 'flower', 'flint_ground', 'carrot_ground'].includes(nearest.type)) {
+          nearest.harvested = true;
+          nearest.regrowDay = eng.time.day + 3;
+
+          if (nearest.type === 'grass') {
+            givePlayerItem('cutgrass', 1);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+1 Срезанная трава', color: '#a3e635', life: 1.4 });
+          } else if (nearest.type === 'sapling') {
+            givePlayerItem('twigs', 1);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+1 Ветки', color: '#fcd34d', life: 1.4 });
+          } else if (nearest.type === 'berry_bush') {
+            givePlayerItem('berries', 2);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+2 Ягоды', color: '#f87171', life: 1.4 });
+          } else if (nearest.type === 'carrot_ground') {
+            givePlayerItem('carrot', 1);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+1 Морковь', color: '#fb923c', life: 1.4 });
+          } else if (nearest.type === 'flower') {
+            givePlayerItem('petals', 1);
+            p.sanity = Math.min(p.maxSanity, p.sanity + 5);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+1 Лепестки (+5 Рассудок)', color: '#f472b6', life: 1.6 });
+          } else if (nearest.type === 'flint_ground') {
+            givePlayerItem('flint', 1);
+            if (Math.random() > 0.45) givePlayerItem('rocks', 1);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 20, text: '+1 Кремень', color: '#cbd5e1', life: 1.4 });
+          }
+          return;
+        }
+
+        // 2. Рубка Дерева (Evergreen)
+        if (nearest.type === 'evergreen') {
+          if (handTool !== 'chop') {
+            addFloatingLog('Нужен Топор в руке, чтобы рубить дерево!', '#f87171');
+            return;
+          }
+          nearest.hp -= 1;
+          if (p.equip.hand.durability) {
+            p.equip.hand.durability -= 4;
+            if (p.equip.hand.durability <= 0) p.equip.hand = null;
+          }
+
+          eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 30, text: 'ТЮК!', color: '#fde047', life: 0.7 });
+
+          if (nearest.hp <= 0) {
+            nearest.harvested = true;
+            nearest.regrowDay = eng.time.day + 4;
+            givePlayerItem('logs', 2);
+            givePlayerItem('pinecone', 1);
+            p.treesChopped += 1;
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 25, text: '+2 Бревна, +1 Шишка', color: '#a3e635', life: 1.8 });
+
+            // GDD 3.2: При вырубке слишком большого количества деревьев спавнится Энт (Treeguard)
+            if (p.treesChopped % 5 === 0) {
+              eng.mobs.push({
+                id: `treeguard_${Date.now()}`,
+                type: 'treeguard',
+                name: 'Энт (Хранитель леса)',
+                x: nearest.x + 30,
+                y: nearest.y + 20,
+                spawnX: nearest.x,
+                spawnY: nearest.y,
+                hp: 900,
+                maxHp: 900,
+                damage: 45,
+                attackPeriod: 3000,
+                lastAttack: 0,
+                state: 'TargetAcquired',
+                targetX: p.x,
+                targetY: p.y,
+                speed: 55,
+                aggroRange: 300,
+                allyTimer: 0
+              });
+              addFloatingLog('Лес разгневан! Пробудился Энт-Хранитель!', '#ef4444');
+            }
+          }
+          return;
+        }
+
+        // 3. Добыча Валуна (Boulder)
+        if (nearest.type === 'boulder') {
+          if (handTool !== 'mine') {
+            addFloatingLog('Нужна Кирка в руке, чтобы разбить валун!', '#f87171');
+            return;
+          }
+          nearest.hp -= 1;
+          if (p.equip.hand.durability) {
+            p.equip.hand.durability -= 5;
+            if (p.equip.hand.durability <= 0) p.equip.hand = null;
+          }
+          eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 25, text: 'ДЗЫНЬ!', color: '#93c5fd', life: 0.7 });
+
+          if (nearest.hp <= 0) {
+            nearest.harvested = true;
+            nearest.regrowDay = 999;
+            givePlayerItem('rocks', 2);
+            givePlayerItem('flint', 1);
+            givePlayerItem('gold_nugget', 1);
+            eng.floatingTexts.push({ x: nearest.x, y: nearest.y - 25, text: '+2 Камня, +1 Золото!', color: '#facc15', life: 1.8 });
+          }
+          return;
+        }
+
+        // 4. Открытие Казана при взаимодействии
+        if (nearest.type === 'crockpot') {
+          setActiveTab('crockpot');
+          return;
+        }
+      };
+
+      // Боевая атака (Клавиша F или кнопка Атаки)
+      const triggerCombatAttack = () => {
+        const eng = engineRef.current;
+        if (!eng || isDead) return;
+        const p = eng.player;
+        const now = performance.now();
+        if (now - p.lastAttackTime < 450) return;
+        p.lastAttackTime = now;
+        p.attackAnim = 0.3;
+
+        let targetMob = null;
+        let minDist = 95;
+        eng.mobs.forEach(m => {
+          const d = Math.hypot(m.x - p.x, m.y - p.y);
+          if (d < minDist) {
+            minDist = d;
+            targetMob = m;
+          }
+        });
+
+        if (!targetMob) {
+          eng.floatingTexts.push({ x: p.x, y: p.y - 35, text: 'Взмах', color: '#9ca3af', life: 0.5 });
+          return;
+        }
+
+        let baseDmg = p.equip.hand ? (ITEMS_DB[p.equip.hand.id]?.damage || 17) : 10;
+        if (eng.character.id === 'wolfgang' && p.hunger > 225) baseDmg *= 2;
+        if (eng.character.id === 'wendy') baseDmg = Math.round(baseDmg * 0.75);
+
+        targetMob.hp -= baseDmg;
+        targetMob.state = 'TargetAcquired';
+
+        if (p.equip.hand?.durability) {
+          p.equip.hand.durability -= 2;
+          if (p.equip.hand.durability <= 0) {
+            addFloatingLog(`${ITEMS_DB[p.equip.hand.id].name} сломался!`, '#f87171');
+            p.equip.hand = null;
+          }
+        }
+
+        eng.floatingTexts.push({
+          x: targetMob.x,
+          y: targetMob.y - 35,
+          text: `-${baseDmg} HP`,
+          color: '#ef4444',
+          life: 1.0
+        });
+
+        if (targetMob.hp <= 0) {
+          handleMobDeath(targetMob);
+        }
+      };
+
+      // Защита от устаревших замыканий (stale closures) для обработчиков клавиатуры
+      const contextActionRef = useRef(triggerContextAction);
+      const combatAttackRef = useRef(triggerCombatAttack);
+      useEffect(() => {
+        contextActionRef.current = triggerContextAction;
+        combatAttackRef.current = triggerCombatAttack;
+      });
+
+      // Использование / Экипировка / Постройка предмета из инвентаря
+      const handleUseInventoryItem = (index) => {
+        const eng = engineRef.current;
+        if (!eng || isDead) return;
+        const p = eng.player;
+        const slotItem = p.inventory[index];
+        if (!slotItem) return;
+        const db = ITEMS_DB[slotItem.id];
+        if (!db) return;
+
+        // Если открыто окно Казана — перекладываем ингредиент в Казан
+        if (activeTab === 'crockpot') {
+          if (crockSlots.length >= 4) {
+            addFloatingLog('В Казане уже 4 ингредиента!', '#f87171');
+            return;
+          }
+          setCrockSlots(prev => [...prev, slotItem.id]);
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+          return;
+        }
+
+        // 1. Экипировка (Hand / Body / Head)
+        if (db.type === 'equip') {
+          const targetSlot = db.slot;
+          const prevEquipped = p.equip[targetSlot];
+          p.inventory.splice(index, 1);
+          if (prevEquipped) {
+            p.inventory.push(prevEquipped);
+          }
+          p.equip[targetSlot] = slotItem;
+          addFloatingLog(`Экипировано: ${db.name}`, '#60a5fa');
+          return;
+        }
+
+        // 2. Постройка структуры на карте
+        if (db.type === 'structure') {
+          eng.nodes.push({
+            id: `struct_${Date.now()}`,
+            type: db.structureType,
+            x: p.x + (p.facing * 45),
+            y: p.y + 15,
+            harvested: false,
+            hp: 10,
+            fuel: db.structureType === 'campfire' ? 95 : db.structureType === 'pit_fire' ? 150 : 0
+          });
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+          addFloatingLog(`Установлено: ${db.name}`, '#4ade80');
+          return;
+        }
+
+        // 3. Посадка шишки (сажает новое дерево)
+        if (slotItem.id === 'pinecone') {
+          eng.nodes.push({
+            id: `tree_${Date.now()}`,
+            type: 'evergreen',
+            x: p.x + 30,
+            y: p.y + 20,
+            harvested: false,
+            hp: 5,
+            size: 'medium'
+          });
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+          addFloatingLog('Посажена еловая шишка!', '#a3e635');
+          return;
+        }
+
+        // 4. Подбрасывание топлива в костер или жарка еды на костре
+        const nearFireNode = eng.nodes.find(
+          n => (n.type === 'campfire' || n.type === 'pit_fire') && Math.hypot(n.x - p.x, n.y - p.y) < 120
+        );
+
+        if (nearFireNode && slotItem.id === 'logs') {
+          nearFireNode.fuel = Math.min(200, (nearFireNode.fuel || 0) + 55);
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+          addFloatingLog('Подброшено бревно в огонь (+Топливо)', '#fb923c');
+          return;
+        }
+
+        if (nearFireNode && db.cookTo) {
+          const cookedId = db.cookTo;
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+          givePlayerItem(cookedId, 1);
+          addFloatingLog(`Приготовлено на костре: ${ITEMS_DB[cookedId].name}`, '#fdba74');
+          return;
+        }
+
+        // 5. Приручение Свиньи мясом (GDD Раздел 5)
+        if (slotItem.id === 'meat' || slotItem.id === 'cooked_meat') {
+          const nearPig = eng.mobs.find(m => m.type === 'pigman' && Math.hypot(m.x - p.x, m.y - p.y) < 110);
+          if (nearPig && nearPig.allyTimer <= 0) {
+            nearPig.allyTimer = 180;
+            slotItem.count -= 1;
+            if (slotItem.count <= 0) p.inventory.splice(index, 1);
+            addFloatingLog('Свинья съела мясо и теперь защищает вас!', '#f472b6');
+            return;
+          }
+        }
+
+        // 6. Употребление Еды (Восстановление HP / Hunger / Sanity)
+        if (db.type === 'food') {
+          if (slotItem.id === 'gears' && eng.character.id !== 'wx78') {
+            addFloatingLog('Только робот WX-78 может есть шестеренки!', '#f87171');
+            return;
+          }
+
+          if (db.wxUpgrade && eng.character.id === 'wx78') {
+            p.maxHp = Math.min(400, p.maxHp + 25);
+            p.maxHunger = Math.min(200, p.maxHunger + 15);
+            p.maxSanity = Math.min(300, p.maxSanity + 20);
+            addFloatingLog('СИСТЕМА WX-78 ОБНОВЛЕНА! Макс. характеристики увеличены!', '#a3e635');
+          }
+
+          p.hp = Math.max(0, Math.min(p.maxHp, p.hp + (db.hp || 0)));
+          p.hunger = Math.max(0, Math.min(p.maxHunger, p.hunger + (db.hunger || 0)));
+          p.sanity = Math.max(0, Math.min(p.maxSanity, p.sanity + (db.sanity || 0)));
+
+          slotItem.count -= 1;
+          if (slotItem.count <= 0) p.inventory.splice(index, 1);
+
+          const sign = (v) => (v > 0 ? `+${v}` : v);
+          eng.floatingTexts.push({
+            x: p.x,
+            y: p.y - 45,
+            text: `${db.hunger ? `${sign(db.hunger)} Сытость ` : ''}${db.hp ? `${sign(db.hp)} HP` : ''}`,
+            color: (db.hp || 0) < 0 ? '#ef4444' : '#4ade80',
+            life: 1.5
+          });
+        }
+      };
+
+      // Крафт предмета (GDD Раздел 4: Прототипирование у Научной машины дает +15 Рассудка)
+      const handleCraftRecipe = (recipe) => {
+        const eng = engineRef.current;
+        if (!eng || isDead) return;
+        const p = eng.player;
+
+        const isUnlocked = p.unlockedBlueprints.includes(recipe.id);
+        const hasStation =
+          recipe.station === 'none' ||
+          (recipe.station === 'science_machine' && (hudState.nearScience || hudState.nearAlchemy)) ||
+          (recipe.station === 'alchemy_engine' && hudState.nearAlchemy);
+
+        if (!isUnlocked && !hasStation) {
+          addFloatingLog('Подойдите к Научной машине для создания прототипа!', '#f87171');
+          return;
+        }
+
+        if (!consumeResources(recipe.cost)) {
+          addFloatingLog('Недостаточно ресурсов для создания!', '#f87171');
+          return;
+        }
+
+        if (!isUnlocked && recipe.station !== 'none') {
+          p.unlockedBlueprints.push(recipe.id);
+          p.sanity = Math.min(p.maxSanity, p.sanity + 15);
+          addFloatingLog(`Чертеж изучен навсегда! +15 Рассудка`, '#38bdf8');
+        }
+
+        const resItem = ITEMS_DB[recipe.result];
+        if (resItem.type === 'equip' && !p.equip[resItem.slot]) {
+          p.equip[resItem.slot] = {
+            id: recipe.result,
+            count: 1,
+            durability: resItem.durability || null
+          };
+          addFloatingLog(`Создано и экипировано: ${resItem.name}`, '#4ade80');
+        } else {
+          givePlayerItem(recipe.result, 1);
+          addFloatingLog(`Создано: ${resItem.name}`, '#4ade80');
+        }
+      };
+
+      // Приготовление блюда в Казане (Crock Pot)
+      const handleCookInCrockPot = () => {
+        if (crockSlots.length !== 4) return;
+        const evaluation = evaluateCrockPotRecipe(crockSlots);
+        givePlayerItem(evaluation.result, 1);
+        setCrockSlots([]);
+        addFloatingLog(evaluation.reason, evaluation.result === 'wet_goop' ? '#f87171' : '#facc15');
+      };
+
+      // Спавн Босса Зимы Циклопа-Оленя (GDD 5: 4000 HP, 75 DMG, аура безумия)
+      const spawnDeerclopsBoss = (eng) => {
+        if (!eng) return;
+        eng.mobs.push({
+          id: `deerclops_${Date.now()}`,
+          type: 'deerclops',
+          name: 'Циклоп-Олень (Босс Зимы)',
+          x: eng.player.x + 210,
+          y: eng.player.y - 140,
+          spawnX: eng.player.x,
+          spawnY: eng.player.y,
+          hp: 4000,
+          maxHp: 4000,
+          damage: 75,
+          attackPeriod: 4000,
+          lastAttack: 0,
+          state: 'TargetAcquired',
+          targetX: eng.player.x,
+          targetY: eng.player.y,
+          speed: 68,
+          aggroRange: 800,
+          allyTimer: 0
+        });
+        addFloatingLog('Земля содрогается... ПРИШЕЛ ЦИКЛОП-ОЛЕНЬ!', '#38bdf8');
+      };
+
+      // ============================================================================
+      // 3. ОСНОВНОЙ ИГРОВОЙ ЦИКЛ (60 FPS CANVAS + AI FSM + ЧАРЛИ + СЕЗОНЫ)
+      // ============================================================================
+
+      useEffect(() => {
+        if (!selectedChar) return;
+
+        const handleKeyDown = (e) => {
+          keysRef.current[e.code] = true;
+          if (e.code === 'Space') {
+            e.preventDefault();
+            contextActionRef.current();
+          } else if (e.code === 'KeyF') {
+            e.preventDefault();
+            combatAttackRef.current();
+          }
+        };
+
+        const handleKeyUp = (e) => {
+          keysRef.current[e.code] = false;
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+
+        let animationFrameId;
+        let lastTime = performance.now();
+        let hudSyncAccumulator = 0;
+
+        const gameLoop = (now) => {
+          const rawDt = Math.min(0.1, (now - lastTime) / 1000);
+          lastTime = now;
+
+          const eng = engineRef.current;
+          if (eng && !isDead) {
+            const dt = rawDt;
+            const simDt = rawDt * timeSpeed;
+            const p = eng.player;
+            const t = eng.time;
+
+            // А. ДВИЖЕНИЕ ИГРОКА (WASD / Стрелки / Сенсорный Джойстик TMA)
+            let moveX = 0;
+            let moveY = 0;
+            if (keysRef.current['KeyW'] || keysRef.current['ArrowUp']) moveY -= 1;
+            if (keysRef.current['KeyS'] || keysRef.current['ArrowDown']) moveY += 1;
+            if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft']) moveX -= 1;
+            if (keysRef.current['KeyD'] || keysRef.current['ArrowRight']) moveX += 1;
+
+            if (joystickRef.current.active) {
+              moveX = joystickRef.current.dx;
+              moveY = joystickRef.current.dy;
+            }
+
+            const mag = Math.hypot(moveX, moveY);
+            if (mag > 0.05) {
+              const normX = moveX / Math.max(1, mag);
+              const normY = moveY / Math.max(1, mag);
+              p.x = Math.max(-1350, Math.min(1350, p.x + normX * p.speed * dt));
+              p.y = Math.max(-1350, Math.min(1350, p.y + normY * p.speed * dt));
+              if (Math.abs(normX) > 0.1) p.facing = normX > 0 ? 1 : -1;
+            }
+
+            if (p.attackAnim > 0) p.attackAnim = Math.max(0, p.attackAnim - dt);
+
+            // Б. ИГРОВОЕ ВРЕМЯ, 16 СЕГМЕНТОВ И СЕЗОНЫ (GDD 2.1 и 2.2)
+            const SEGMENT_DURATION = 10;
+            t.segmentProgress += simDt;
+            if (t.segmentProgress >= SEGMENT_DURATION) {
+              t.segmentProgress -= SEGMENT_DURATION;
+              t.segment += 1;
+
+              if (t.segment >= 16) {
+                t.segment = 0;
+                t.day += 1;
+                t.season = getSeasonByDay(t.day);
+
+                eng.nodes.forEach(n => {
+                  if (n.harvested && t.day >= n.regrowDay) {
+                    n.harvested = false;
+                    n.hp = n.type === 'evergreen' ? 5 : 1;
+                  }
+                });
+
+                if (t.day % 5 === 0 && t.day !== t.lastHoundDay) {
+                  t.lastHoundDay = t.day;
+                  const angle = Math.random() * Math.PI * 2;
+                  eng.mobs.push({
+                    id: `hound_${Date.now()}`,
+                    type: 'hound',
+                    name: 'Адская Гончая',
+                    x: p.x + Math.cos(angle) * 320,
+                    y: p.y + Math.sin(angle) * 320,
+                    spawnX: p.x,
+                    spawnY: p.y,
+                    hp: 150,
+                    maxHp: 150,
+                    damage: 20,
+                    attackPeriod: 2000,
+                    lastAttack: 0,
+                    state: 'TargetAcquired',
+                    targetX: p.x,
+                    targetY: p.y,
+                    speed: 118,
+                    aggroRange: 500,
+                    allyTimer: 0
+                  });
+                  addFloatingLog('Слышен лай вдалеке... Приближаются Гончие!', '#ef4444');
+                }
+
+                if (t.day === 30 && !t.deerclopsSpawned) {
+                  t.deerclopsSpawned = true;
+                  spawnDeerclopsBoss(eng);
+                }
+              }
+            }
+
+            if (t.segment <= 8) t.phase = 'Day';
+            else if (t.segment <= 12) t.phase = 'Dusk';
+            else t.phase = 'Night';
+
+            // В. ПРОВЕРКА БЛИЗОСТИ К ОГНЮ, СТАНЦИЯМ НАУКИ И ОСВЕЩЕНИЯ
+            let nearScience = false;
+            let nearAlchemy = false;
+            let nearFire = false;
+            let nearCrockpot = false;
+
+            for (let i = eng.nodes.length - 1; i >= 0; i--) {
+              const n = eng.nodes[i];
+              if (n.type === 'campfire' || n.type === 'pit_fire') {
+                n.fuel = Math.max(0, n.fuel - simDt * 1.1);
+                if (n.type === 'campfire' && n.fuel <= 0) {
+                  eng.nodes.splice(i, 1);
+                  continue;
+                }
+              }
+              const d = Math.hypot(n.x - p.x, n.y - p.y);
+              if (d < 130) {
+                if (n.type === 'science_machine') nearScience = true;
+                if (n.type === 'alchemy_engine') { nearAlchemy = true; nearScience = true; }
+                if (n.type === 'crockpot') nearCrockpot = true;
+              }
+              if ((n.type === 'campfire' || n.type === 'pit_fire') && n.fuel > 0 && d < 210) {
+                nearFire = true;
+              }
+            }
+
+            const hasHandLight =
+              p.equip.hand?.id === 'torch' ||
+              p.equip.hand?.id === 'lighter';
+
+            if (p.equip.hand?.id === 'torch') {
+              p.equip.hand.durability -= simDt * 1.3;
+              if (p.equip.hand.durability <= 0) {
+                p.equip.hand = null;
+                addFloatingLog('Ваш факел погас!', '#f87171');
+              }
+            }
+
+            const inLight = t.phase !== 'Night' || nearFire || hasHandLight;
+
+            // Г. ТРИ ЖИЗНЕННЫХ ПОКАЗАТЕЛЯ И МЕХАНИКА ЧАРЛИ (GDD 2.1 и 2.3)
+            const mightyMultiplier = (eng.character.id === 'wolfgang' && p.hunger > 225) ? 2.2 : 1.0;
+            p.hunger = Math.max(0, p.hunger - 0.35 * mightyMultiplier * simDt);
+
+            if (p.hunger <= 0) {
+              p.hp = Math.max(0, p.hp - 1.0 * simDt);
+            }
+
+            let sanityDelta = 0;
+            if (t.phase === 'Dusk') sanityDelta -= 0.15;
+            if (t.phase === 'Night') sanityDelta -= inLight ? 0.25 : 1.2;
+            if (p.equip.head && ITEMS_DB[p.equip.head.id]?.sanityBonus) {
+              sanityDelta += 0.25;
+            }
+            eng.mobs.forEach(m => {
+              const d = Math.hypot(m.x - p.x, m.y - p.y);
+              if (m.type === 'deerclops' && d < 280) sanityDelta -= 2.5;
+              else if ((m.type === 'spider' || m.type === 'hound' || m.type === 'shadow') && d < 160) {
+                sanityDelta -= 0.45;
+              }
+            });
+
+            p.sanity = Math.max(0, Math.min(p.maxSanity, p.sanity + sanityDelta * simDt));
+
+            if (p.sanity / p.maxSanity < 0.15) {
+              t.shadowTimer += dt;
+              const activeShadows = eng.mobs.filter(m => m.type === 'shadow').length;
+              if (t.shadowTimer > 7 && activeShadows < 2) {
+                t.shadowTimer = 0;
+                const ang = Math.random() * Math.PI * 2;
+                eng.mobs.push({
+                  id: `shadow_${Date.now()}`,
+                  type: 'shadow',
+                  name: 'Ползучий Ужас',
+                  x: p.x + Math.cos(ang) * 200,
+                  y: p.y + Math.sin(ang) * 200,
+                  spawnX: p.x,
+                  spawnY: p.y,
+                  hp: 110,
+                  maxHp: 110,
+                  damage: 20,
+                  attackPeriod: 2500,
+                  lastAttack: 0,
+                  state: 'TargetAcquired',
+                  targetX: p.x,
+                  targetY: p.y,
+                  speed: 88,
+                  aggroRange: 400,
+                  allyTimer: 0
+                });
+                addFloatingLog('Рассудок на исходе! Тени обретают плоть!', '#c084fc');
+              }
+            }
+
+            // 3. ЧАРЛИ (Ночной Монстр в полной темноте: 100 урона каждые 5 сек)
+            if (t.phase === 'Night' && !inLight) {
+              t.charlieTimer += dt;
+              if (t.charlieTimer >= 2.2 && t.charlieTimer - dt < 2.2) {
+                addFloatingLog('«Что это было?! Тут кто-то есть в темноте!»', '#f87171');
+              }
+              if (t.charlieTimer >= 4.8) {
+                t.charlieTimer = 0;
+                const armorMult = p.equip.body?.id === 'log_suit' ? 0.2 : 1.0;
+                const dmg = Math.round(100 * armorMult);
+                p.hp = Math.max(0, p.hp - dmg);
+                setCharlieFlash(true);
+                setTimeout(() => setCharlieFlash(false), 450);
+                addFloatingLog(`АТАКА ЧАРЛИ ИЗ ТЕМНОТЫ! (-${dmg} HP) Срочно зажгите свет!`, '#ef4444');
+              }
+            } else {
+              t.charlieTimer = 0;
+            }
+
+            // 4. Сезонная температура и влажность (GDD 2.2)
+            const hasWinterHat = p.equip.head?.id === 'winter_hat';
+            const wilsonBeardBonus = eng.character.id === 'wilson' ? Math.min(10, t.day * 0.8) : 0;
+
+            if (nearFire) {
+              p.temp = Math.min(35, p.temp + 4.5 * simDt);
+              p.wetness = Math.max(0, p.wetness - 3 * simDt);
+            } else if (t.season === 'Winter') {
+              const coldRate = hasWinterHat ? 0.3 : Math.max(0.4, 1.4 - wilsonBeardBonus * 0.1);
+              p.temp = Math.max(-5, p.temp - coldRate * simDt);
+              if (p.temp <= 0) {
+                p.hp = Math.max(0, p.hp - 1.2 * simDt);
+              }
+            } else if (t.season === 'Summer') {
+              p.temp = Math.min(45, p.temp + 1.1 * simDt);
+              if (p.temp >= 40 && !(eng.character.id === 'willow')) {
+                p.hp = Math.max(0, p.hp - 1.0 * simDt);
+              }
+            } else {
+              p.temp += (22 - p.temp) * 0.2 * simDt;
+            }
+
+            if (t.season === 'Spring') {
+              p.wetness = Math.min(100, p.wetness + 1.5 * simDt);
+              if (eng.character.id === 'wx78' && p.wetness > 35) {
+                p.hp = Math.max(0, p.hp - 0.8 * simDt);
+              }
+            } else {
+              p.wetness = Math.max(0, p.wetness - 2.0 * simDt);
+            }
+
+            // 5. Абигейл (Призрак сестры Венди: AOE урон врагам рядом)
+            if (p.abigailActive) {
+              eng.mobs.forEach(m => {
+                if (m.type === 'pigman' && m.allyTimer > 0) return;
+                const d = Math.hypot(m.x - p.x, m.y - p.y);
+                if (d < 125 && (m.state === 'TargetAcquired' || m.type === 'spider' || m.type === 'hound' || m.type === 'shadow')) {
+                  m.hp -= 12 * dt;
+                  if (m.hp <= 0) handleMobDeath(m);
+                }
+              });
+            }
+
+            // Д. КОНЕЧНЫЙ АВТОМАТ МОБОВ (AI FSM: Idle, Wander, TargetAcquired, Attack)
+            eng.mobs.forEach(mob => {
+              if (mob.allyTimer > 0) mob.allyTimer = Math.max(0, mob.allyTimer - dt);
+
+              const distToPlayer = Math.hypot(p.x - mob.x, p.y - mob.y);
+
+              if (mob.type === 'pigman' && mob.allyTimer > 0) {
+                const enemy = eng.mobs.find(e => e.id !== mob.id && e.type !== 'pigman' && Math.hypot(e.x - mob.x, e.y - mob.y) < 180);
+                if (enemy) {
+                  const dEnemy = Math.hypot(enemy.x - mob.x, enemy.y - mob.y);
+                  if (dEnemy > 42) {
+                    mob.x += ((enemy.x - mob.x) / dEnemy) * mob.speed * dt;
+                    mob.y += ((enemy.y - mob.y) / dEnemy) * mob.speed * dt;
+                  } else if (now - mob.lastAttack > mob.attackPeriod) {
+                    mob.lastAttack = now;
+                    enemy.hp -= mob.damage;
+                    eng.floatingTexts.push({ x: enemy.x, y: enemy.y - 30, text: `-${mob.damage}`, color: '#f472b6', life: 0.8 });
+                    if (enemy.hp <= 0) handleMobDeath(enemy);
+                  }
+                } else if (distToPlayer > 75) {
+                  mob.x += ((p.x - mob.x) / distToPlayer) * mob.speed * dt;
+                  mob.y += ((p.y - mob.y) / distToPlayer) * mob.speed * dt;
+                }
+                return;
+              }
+
+              const effectiveAggro =
+                mob.type === 'spider'
+                  ? (t.phase === 'Day' ? 115 : 220)
+                  : mob.aggroRange;
+
+              if (distToPlayer < effectiveAggro && mob.state !== 'TargetAcquired') {
+                mob.state = 'TargetAcquired';
+              } else if (distToPlayer > 360 && mob.state === 'TargetAcquired' && mob.type !== 'hound' && mob.type !== 'deerclops') {
+                mob.state = 'Wander';
+              }
+
+              if (mob.state === 'Idle') {
+                if (Math.random() < 0.015) {
+                  mob.state = 'Wander';
+                  mob.targetX = mob.spawnX + (Math.random() - 0.5) * 160;
+                  mob.targetY = mob.spawnY + (Math.random() - 0.5) * 160;
+                }
+              } else if (mob.state === 'Wander') {
+                const dTarget = Math.hypot(mob.targetX - mob.x, mob.targetY - mob.y);
+                if (dTarget < 10) {
+                  mob.state = 'Idle';
+                } else {
+                  mob.x += ((mob.targetX - mob.x) / dTarget) * (mob.speed * 0.5) * dt;
+                  mob.y += ((mob.targetY - mob.y) / dTarget) * (mob.speed * 0.5) * dt;
+                }
+              } else if (mob.state === 'TargetAcquired') {
+                const attackReach = mob.type === 'deerclops' ? 75 : 46;
+                if (distToPlayer > attackReach) {
+                  mob.x += ((p.x - mob.x) / distToPlayer) * mob.speed * dt;
+                  mob.y += ((p.y - mob.y) / distToPlayer) * mob.speed * dt;
+                } else {
+                  if (now - mob.lastAttack >= mob.attackPeriod) {
+                    mob.lastAttack = now;
+                    let armorMult = 1.0;
+                    if (p.equip.body?.id === 'log_suit') {
+                      armorMult = 0.2;
+                      p.equip.body.durability -= mob.damage * 0.4;
+                      if (p.equip.body.durability <= 0) {
+                        p.equip.body = null;
+                        addFloatingLog('Деревянная броня разрушена!', '#f87171');
+                      }
+                    }
+                    const finalDmg = Math.max(1, Math.round(mob.damage * armorMult));
+                    p.hp = Math.max(0, p.hp - finalDmg);
+                    eng.floatingTexts.push({
+                      x: p.x,
+                      y: p.y - 45,
+                      text: `-${finalDmg} HP (${mob.name})`,
+                      color: '#ef4444',
+                      life: 1.1
+                    });
+                  }
+                }
+              }
+            });
+
+            for (let i = eng.floatingTexts.length - 1; i >= 0; i--) {
+              eng.floatingTexts[i].y -= 22 * dt;
+              eng.floatingTexts[i].life -= dt;
+              if (eng.floatingTexts[i].life <= 0) eng.floatingTexts.splice(i, 1);
+            }
+
+            if (p.hp <= 0) {
+              setIsDead(true);
+            }
+
+            // Е. СИНХРОНИЗАЦИЯ С REACT HUD (10 РАЗ В СЕКУНДУ)
+            hudSyncAccumulator += dt;
+            if (hudSyncAccumulator >= 0.1) {
+              hudSyncAccumulator = 0;
+
+              let nearNode = null;
+              let minD = 85;
+              eng.nodes.forEach(n => {
+                if (n.harvested || n.type === 'portal') return;
+                const d = Math.hypot(n.x - p.x, n.y - p.y);
+                if (d < minD) {
+                  minD = d;
+                  nearNode = n;
+                }
+              });
+
+              let contextAction = null;
+              if (nearNode) {
+                if (nearNode.type === 'evergreen') contextAction = { label: 'Рубить', icon: '🪓' };
+                else if (nearNode.type === 'boulder') contextAction = { label: 'Добыть', icon: '⛏️' };
+                else if (nearNode.type === 'crockpot') contextAction = { label: 'Казан', icon: '🍲' };
+                else contextAction = { label: 'Собрать', icon: '✋' };
+              }
+
+              setHudState({
+                hp: Math.ceil(p.hp),
+                maxHp: p.maxHp,
+                hunger: Math.ceil(p.hunger),
+                maxHunger: p.maxHunger,
+                sanity: Math.ceil(p.sanity),
+                maxSanity: p.maxSanity,
+                day: t.day,
+                segment: t.segment,
+                phase: t.phase,
+                season: t.season,
+                temp: Math.round(p.temp),
+                wetness: Math.round(p.wetness),
+                inLight,
+                nearScience,
+                nearAlchemy,
+                nearFire,
+                nearCrockpot,
+                mightyForm: eng.character.id === 'wolfgang' && p.hunger > 225,
+                beardDays: eng.character.id === 'wilson' ? Math.floor(t.day / 3) : 0,
+                contextAction,
+                inventory: [...p.inventory],
+                equip: { ...p.equip },
+                unlockedBlueprints: [...p.unlockedBlueprints]
+              });
+            }
+
+            // Ж. ОТРИСОВКА МИРА НА HTML5 CANVAS (ИЗОМЕТРИЯ 2.5D + СВЕТ/ТЬМА)
+            renderWorldCanvas(canvasRef.current, eng, now);
+          }
+
+          animationFrameId = requestAnimationFrame(gameLoop);
+        };
+
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return () => {
+          cancelAnimationFrame(animationFrameId);
+          window.removeEventListener('keydown', handleKeyDown);
+          window.removeEventListener('keyup', handleKeyUp);
+        };
+      }, [selectedChar, isDead, timeSpeed]);
+
+      // ============================================================================
+      // 4. ФУНКЦИЯ РЕНДЕРИНГА CANVAS (ТИМ БЁРТОН ГОТИК-АРТ + DYNAMIC LIGHTING)
+      // ============================================================================
+
+      const renderWorldCanvas = (canvas, eng, now) => {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+
+        const p = eng.player;
+        const t = eng.time;
+        const camX = p.x - width / 2;
+        const camY = p.y - height / 2;
+
+        // 1. Фон земли в зависимости от сезона
+        let groundColor = '#3f4d28';
+        let gridColor = 'rgba(25, 33, 14, 0.35)';
+        if (t.season === 'Winter') {
+          groundColor = '#cbd5e1';
+          gridColor = 'rgba(148, 163, 184, 0.4)';
+        } else if (t.season === 'Spring') {
+          groundColor = '#2e5a27';
+        } else if (t.season === 'Summer') {
+          groundColor = '#785c28';
+        }
+
+        ctx.fillStyle = groundColor;
+        ctx.fillRect(0, 0, width, height);
+
+        // Изометрическая сетка тайлов Константы
+        ctx.strokeStyle = gridColor;
+        ctx.lineWidth = 1;
+        const step = 90;
+        const offsetX = -(camX % step);
+        const offsetY = -(camY % step);
+
+        ctx.beginPath();
+        for (let x = offsetX - step; x < width + step; x += step) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+        }
+        for (let y = offsetY - step; y < height + step; y += step) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+        }
+        ctx.stroke();
+
+        // 2. Сортировка всех объектов по оси Y (Depth Y-Sorting для 2.5D изометрии)
+        const renderList = [];
+
+        eng.nodes.forEach(n => {
+          if (
+            n.x > camX - 120 &&
+            n.x < camX + width + 120 &&
+            n.y > camY - 120 &&
+            n.y < camY + height + 120
+          ) {
+            renderList.push({ kind: 'node', y: n.y, obj: n });
+          }
+        });
+
+        eng.mobs.forEach(m => {
+          renderList.push({ kind: 'mob', y: m.y, obj: m });
+        });
+
+        renderList.push({ kind: 'player', y: p.y, obj: p });
+        renderList.sort((a, b) => a.y - b.y);
+
+        // 3. Отрисовка всех сущностей
+        renderList.forEach(item => {
+          const sx = item.obj.x - camX;
+          const sy = item.obj.y - camY;
+
+          if (item.kind === 'node') {
+            drawWorldNode(ctx, item.obj, sx, sy, now, t.season);
+          } else if (item.kind === 'mob') {
+            drawMobEntity(ctx, item.obj, sx, sy, now);
+          } else if (item.kind === 'player') {
+            drawPlayerSurvivor(ctx, eng, sx, sy, now);
+          }
+        });
+
+        // 4. Погодные частицы (Снег зимой / Дождь весной)
+        if (t.season === 'Winter' || t.season === 'Spring') {
+          ctx.fillStyle = t.season === 'Winter' ? 'rgba(255,255,255,0.75)' : 'rgba(125,211,252,0.55)';
+          for (let i = 0; i < 45; i++) {
+            const px = ((i * 97 + Math.floor(now * 0.08)) % width);
+            const py = ((i * 131 + Math.floor(now * (t.season === 'Spring' ? 0.45 : 0.15))) % height);
+            if (t.season === 'Winter') {
+              ctx.beginPath();
+              ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              ctx.fillRect(px, py, 1.5, 11);
+            }
+          }
+        }
+
+        // 5. СИСТЕМА ОСВЕЩЕНИЯ: ВЕЧЕР (DUSK) И КРОМЕШНАЯ ТЬМА НОЧЬЮ (ЧАРЛИ)
+        if (t.phase === 'Dusk' || t.phase === 'Night') {
+          const darknessAlpha = t.phase === 'Dusk' ? 0.48 : 0.95;
+
+          const lights = [];
+          if (p.equip.hand?.id === 'torch' || p.equip.hand?.id === 'lighter') {
+            const flicker = Math.sin(now * 0.015) * 8;
+            lights.push({
+              x: p.x - camX,
+              y: p.y - camY - 15,
+              r: (ITEMS_DB[p.equip.hand.id]?.lightRadius || 150) + flicker
+            });
+          }
+
+          eng.nodes.forEach(n => {
+            if ((n.type === 'campfire' || n.type === 'pit_fire') && n.fuel > 0) {
+              const flicker = Math.cos(now * 0.012 + n.x) * 10;
+              lights.push({
+                x: n.x - camX,
+                y: n.y - camY - 10,
+                r: Math.min(240, 110 + n.fuel) + flicker
+              });
+            }
+          });
+
+          ctx.save();
+          if (lights.length === 0) {
+            ctx.fillStyle = `rgba(4, 6, 16, ${darknessAlpha})`;
+            ctx.fillRect(0, 0, width, height);
+          } else {
+            ctx.fillStyle = `rgba(5, 7, 18, ${darknessAlpha})`;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.globalCompositeOperation = 'destination-out';
+            lights.forEach(l => {
+              const grad = ctx.createRadialGradient(l.x, l.y, l.r * 0.15, l.x, l.y, l.r);
+              grad.addColorStop(0, 'rgba(0,0,0,1)');
+              grad.addColorStop(0.7, 'rgba(0,0,0,0.65)');
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+              ctx.fillStyle = grad;
+              ctx.beginPath();
+              ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+              ctx.fill();
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+            lights.forEach(l => {
+              const warmGrad = ctx.createRadialGradient(l.x, l.y, 10, l.x, l.y, l.r);
+              warmGrad.addColorStop(0, 'rgba(251, 146, 60, 0.22)');
+              warmGrad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+              ctx.fillStyle = warmGrad;
+              ctx.beginPath();
+              ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
+          ctx.restore();
+        }
+
+        // 6. Искажение экрана при низком Рассудке (< 25%)
+        if (p.sanity / p.maxSanity < 0.25) {
+          const pulse = 0.25 + Math.sin(now * 0.006) * 0.12;
+          const sanityGrad = ctx.createRadialGradient(width / 2, height / 2, width * 0.22, width / 2, height / 2, width * 0.65);
+          sanityGrad.addColorStop(0, 'rgba(0,0,0,0)');
+          sanityGrad.addColorStop(1, `rgba(88, 28, 135, ${pulse})`);
+          ctx.fillStyle = sanityGrad;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        // 7. Всплывающие тексты урона и сбора ресурсов
+        ctx.font = 'bold 13px Georgia, serif';
+        ctx.textAlign = 'center';
+        eng.floatingTexts.forEach(ft => {
+          const fx = ft.x - camX;
+          const fy = ft.y - camY;
+          ctx.fillStyle = 'rgba(0,0,0,0.8)';
+          ctx.fillText(ft.text, fx + 1, fy + 1);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, fx, fy);
+        });
+      };
+
+      // Отрисовка объектов карты
+      const drawWorldNode = (ctx, n, sx, sy, now, season) => {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 4, n.type === 'evergreen' ? 24 : 16, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (n.harvested) {
+          ctx.fillStyle = '#57534e';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          return;
+        }
+
+        switch (n.type) {
+          case 'portal': {
+            ctx.strokeStyle = '#d97706';
+            ctx.lineWidth = 3;
+            ctx.fillStyle = '#292524';
+            ctx.beginPath();
+            ctx.arc(sx, sy - 20, 28, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.font = '24px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🌀', sx, sy - 12);
+            break;
+          }
+          case 'evergreen': {
+            const sway = Math.sin(now * 0.002 + n.x) * 2.5;
+            ctx.fillStyle = '#5c4033';
+            ctx.fillRect(sx - 5, sy - 18, 10, 20);
+
+            const treeColor = season === 'Winter' ? '#1e3a2f' : '#1b3b1a';
+            const strokeColor = '#0c1a0c';
+            ctx.fillStyle = treeColor;
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+
+            for (let tier = 0; tier < 3; tier++) {
+              const ty = sy - 16 - tier * 18;
+              const w = 28 - tier * 5;
+              ctx.beginPath();
+              ctx.moveTo(sx + sway * (tier + 1) * 0.4, ty - 26);
+              ctx.lineTo(sx - w, ty);
+              ctx.lineTo(sx + w, ty);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'boulder': {
+            ctx.fillStyle = '#64748b';
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(sx - 22, sy + 2);
+            ctx.lineTo(sx - 15, sy - 22);
+            ctx.lineTo(sx + 6, sy - 26);
+            ctx.lineTo(sx + 23, sy - 8);
+            ctx.lineTo(sx + 18, sy + 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(sx - 6, sy - 15, 5, 4);
+            ctx.fillRect(sx + 5, sy - 10, 4, 4);
+            break;
+          }
+          case 'grass': {
+            ctx.strokeStyle = season === 'Winter' ? '#94a3b8' : '#a3e635';
+            ctx.lineWidth = 2.5;
+            for (let i = -2; i <= 2; i++) {
+              ctx.beginPath();
+              ctx.moveTo(sx + i * 3, sy);
+              ctx.quadraticCurveTo(sx + i * 6, sy - 12, sx + i * 8, sy - 20);
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'sapling': {
+            ctx.strokeStyle = '#92400e';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx, sy - 20);
+            ctx.moveTo(sx, sy - 10);
+            ctx.lineTo(sx - 9, sy - 18);
+            ctx.moveTo(sx, sy - 13);
+            ctx.lineTo(sx + 9, sy - 22);
+            ctx.stroke();
+            break;
+          }
+          case 'berry_bush': {
+            ctx.fillStyle = '#166534';
+            ctx.strokeStyle = '#052e16';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(sx, sy - 10, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#ef4444';
+            [[-5, -12], [6, -14], [1, -6], [-6, -5]].forEach(([bx, by]) => {
+              ctx.beginPath();
+              ctx.arc(sx + bx, sy + by, 3, 0, Math.PI * 2);
+              ctx.fill();
+            });
+            break;
+          }
+          case 'flower': {
+            ctx.font = '18px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🌸', sx, sy - 2);
+            break;
+          }
+          case 'carrot_ground': {
+            ctx.font = '18px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🥕', sx, sy - 2);
+            break;
+          }
+          case 'flint_ground': {
+            ctx.fillStyle = '#94a3b8';
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx - 9, sy);
+            ctx.lineTo(sx, sy - 10);
+            ctx.lineTo(sx + 10, sy - 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            break;
+          }
+          case 'campfire':
+          case 'pit_fire': {
+            if (n.type === 'pit_fire') {
+              ctx.fillStyle = '#475569';
+              for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+                ctx.beginPath();
+                ctx.arc(sx + Math.cos(a) * 16, sy + Math.sin(a) * 8, 5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+            ctx.font = n.fuel > 0 ? '26px serif' : '18px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(n.fuel > 0 ? '🔥' : '🪨', sx, sy - 4);
+            break;
+          }
+          case 'science_machine':
+          case 'alchemy_engine': {
+            ctx.fillStyle = n.type === 'alchemy_engine' ? '#581c87' : '#78350f';
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 2;
+            ctx.fillRect(sx - 18, sy - 34, 36, 34);
+            ctx.strokeRect(sx - 18, sy - 34, 36, 34);
+            ctx.font = '24px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(n.type === 'alchemy_engine' ? '🔬' : '⚗️', sx, sy - 10);
+            break;
+          }
+          case 'crockpot': {
+            ctx.fillStyle = '#7f1d1d';
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(sx, sy - 14, 18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.font = '22px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('🍲', sx, sy - 8);
+            break;
+          }
+          default:
+            break;
+        }
+        ctx.restore();
+      };
+
+      // Отрисовка Моба с полоской HP и состоянием FSM
+      const drawMobEntity = (ctx, m, sx, sy, now) => {
+        ctx.save();
+        const bounce = Math.abs(Math.sin(now * 0.008 + m.x)) * 4;
+        const isBoss = m.type === 'deerclops' || m.type === 'treeguard';
+
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 4, isBoss ? 32 : 16, isBoss ? 12 : 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.textAlign = 'center';
+        if (m.type === 'spider') {
+          ctx.fillStyle = '#111827';
+          ctx.beginPath();
+          ctx.arc(sx, sy - 10 - bounce, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.font = '22px serif';
+          ctx.fillText('🕷️', sx, sy - 3 - bounce);
+        } else if (m.type === 'pigman') {
+          ctx.fillStyle = m.allyTimer > 0 ? '#f472b6' : '#fda4af';
+          ctx.beginPath();
+          ctx.arc(sx, sy - 16 - bounce, 15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.font = '25px serif';
+          ctx.fillText('🐷', sx, sy - 8 - bounce);
+          if (m.allyTimer > 0) {
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillStyle = '#4ade80';
+            ctx.fillText('ДРУГ', sx, sy - 46);
+          }
+        } else if (m.type === 'hound') {
+          ctx.font = '26px serif';
+          ctx.fillText('🐺', sx, sy - 6 - bounce);
+        } else if (m.type === 'shadow') {
+          ctx.globalAlpha = 0.72;
+          ctx.fillStyle = '#090d16';
+          ctx.beginPath();
+          ctx.arc(sx, sy - 16 - bounce, 18, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.font = '24px serif';
+          ctx.fillText('👁️‍🗨️', sx, sy - 8 - bounce);
+        } else if (m.type === 'treeguard') {
+          ctx.font = '44px serif';
+          ctx.fillText('🌲', sx, sy - 10 - bounce);
+          ctx.font = '18px serif';
+          ctx.fillText('😡', sx, sy - 32 - bounce);
+        } else if (m.type === 'deerclops') {
+          ctx.font = '54px serif';
+          ctx.fillText('🦌', sx, sy - 12 - bounce);
+          ctx.font = '22px serif';
+          ctx.fillText('👁️', sx, sy - 42 - bounce);
+        }
+
+        const barW = isBoss ? 70 : 38;
+        const hpPct = Math.max(0, m.hp / m.maxHp);
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.fillRect(sx - barW / 2, sy - (isBoss ? 72 : 40), barW, 5);
+        ctx.fillStyle = m.allyTimer > 0 ? '#4ade80' : '#ef4444';
+        ctx.fillRect(sx - barW / 2, sy - (isBoss ? 72 : 40), barW * hpPct, 5);
+
+        ctx.restore();
+      };
+
+      // Отрисовка Выжившего (Игрока) + Призрак Абигейл для Венди
+      const drawPlayerSurvivor = (ctx, eng, sx, sy, now) => {
+        const p = eng.player;
+        const char = eng.character;
+        ctx.save();
+
+        if (p.abigailActive) {
+          const abX = sx - p.facing * 42 + Math.cos(now * 0.003) * 8;
+          const abY = sy - 18 + Math.sin(now * 0.004) * 6;
+          ctx.strokeStyle = 'rgba(192, 132, 252, 0.35)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 115, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.font = '24px serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('👻', abX, abY);
+        }
+
+        const isMighty = char.id === 'wolfgang' && p.hunger > 225;
+        const scale = isMighty ? 1.25 : 1.0;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy + 5, 16 * scale, 7 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Тело (с совместимым фолбэком для roundRect)
+        ctx.fillStyle = p.equip.body?.id === 'log_suit' ? '#78350f' : char.color;
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(sx - 11 * scale, sy - 26 * scale, 22 * scale, 24 * scale, 6);
+        } else {
+          ctx.rect(sx - 11 * scale, sy - 26 * scale, 22 * scale, 24 * scale);
+        }
+        ctx.fill();
+        ctx.stroke();
+
+        // Голова
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(sx, sy - 34 * scale, 13 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Борода Уилсона
+        if (char.id === 'wilson' && eng.time.day >= 2) {
+          ctx.fillStyle = '#1f2937';
+          ctx.beginPath();
+          ctx.arc(sx, sy - 27 * scale, 9 * scale, 0, Math.PI);
+          ctx.fill();
+        }
+
+        // Головной убор
+        if (p.equip.head) {
+          ctx.font = '18px serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(ITEMS_DB[p.equip.head.id]?.icon || '🎩', sx, sy - 45 * scale);
+        }
+
+        // Предмет в руке + анимация удара
+        if (p.equip.hand) {
+          const swingOffset = p.attackAnim > 0 ? p.facing * 14 : 0;
+          ctx.font = '21px serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(
+            ITEMS_DB[p.equip.hand.id]?.icon || '🪓',
+            sx + p.facing * 18 + swingOffset,
+            sy - 16
+          );
+        }
+
+        ctx.restore();
+      };
+
+      // Клик по холсту для взаимодействия на мобильных экранах
+      const handleCanvasTap = (e) => {
+        const eng = engineRef.current;
+        if (!eng || isDead) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        const worldX = eng.player.x + (clickX - rect.width / 2);
+        const worldY = eng.player.y + (clickY - rect.height / 2);
+
+        const clickedMob = eng.mobs.find(m => Math.hypot(m.x - worldX, m.y - worldY) < 48);
+        if (clickedMob && Math.hypot(clickedMob.x - eng.player.x, clickedMob.y - eng.player.y) < 105) {
+          triggerCombatAttack();
+          return;
+        }
+
+        const clickedNode = eng.nodes.find(n => !n.harvested && Math.hypot(n.x - worldX, n.y - worldY) < 48);
+        if (clickedNode && Math.hypot(clickedNode.x - eng.player.x, clickedNode.y - eng.player.y) < 95) {
+          triggerContextAction();
+        }
+      };
+
+      // ============================================================================
+      // 5. ЭКРАН ВЫБОРА ПЕРСОНАЖА (GDD 3.1 SURVIVORS)
+      // ============================================================================
+
+      if (!selectedChar) {
+        return (
+          <div className="min-h-screen bg-[#12100e] text-amber-100 flex flex-col justify-between p-4 select-none font-serif overflow-y-auto">
+            <div className="max-w-2xl mx-auto w-full text-center pt-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-950/70 border border-amber-700/50 text-amber-300 text-xs mb-2">
+                <Sparkles className="w-3.5 h-3.5" /> TELEGRAM MINI APP • ИЗОМЕТРИЧЕСКИЙ ВЫЖИВАЧ
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-wider text-amber-400 drop-shadow">
+                DON'T STARVE TOGETHER
+              </h1>
+              <p className="text-xs sm:text-sm text-stone-400 mt-1">
+                Выберите выжившего для отправки в Константу. Берегитесь темноты и Чарли!
+              </p>
+            </div>
+
+            <div className="max-w-3xl mx-auto w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4 overflow-y-auto max-h-[68vh] pr-1">
+              {CHARACTERS.map(char => (
+                <div
+                  key={char.id}
+                  onClick={() => startNewGame(char)}
+                  className="group cursor-pointer bg-stone-900/90 hover:bg-stone-800/90 border-2 border-amber-900/60 hover:border-amber-500 rounded-xl p-3.5 transition-all flex flex-col justify-between shadow-lg"
+                >
+                  <div>
+                    <div className="flex items-center justify-between border-b border-stone-800 pb-2 mb-2">
+                      <div>
+                        <h3 className="text-lg font-bold text-amber-300 group-hover:text-amber-200">
+                          {char.name}
+                        </h3>
+                        <p className="text-[11px] text-stone-400 italic">{char.title}</p>
+                      </div>
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold border-2 border-amber-500/50"
+                        style={{ backgroundColor: char.color }}
+                      >
+                        {char.name[0]}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 text-center my-2 bg-stone-950/70 p-2 rounded-lg border border-stone-800">
+                      <div>
+                        <div className="text-[10px] text-stone-400">❤️ HP</div>
+                        <div className="text-xs font-bold text-red-400">{char.hp}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-stone-400">🍖 Сытость</div>
+                        <div className="text-xs font-bold text-amber-400">{char.hunger}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-stone-400">🧠 Рассудок</div>
+                        <div className="text-xs font-bold text-sky-400">{char.sanity}</div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-stone-300 leading-relaxed mt-2">
+                      {char.perk}
+                    </p>
+                  </div>
+
+                  <button className="mt-3 w-full py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-stone-950 font-bold text-xs uppercase tracking-wider transition">
+                    Выжить за {char.name}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="max-w-2xl mx-auto w-full text-center text-[11px] text-stone-500 border-t border-stone-800 pt-2">
+              Управление: Сенсорный джойстик или WASD • Пробел — Собрать/Рубить • F — Атака
+            </div>
+          </div>
+        );
+      }
+
+      const seasonNames = {
+        Autumn: { label: 'Осень', icon: '🍂', color: 'text-amber-400' },
+        Winter: { label: 'Зима', icon: '❄️', color: 'text-sky-300' },
+        Spring: { label: 'Весна', icon: '🌧️', color: 'text-emerald-400' },
+        Summer: { label: 'Лето', icon: '☀️', color: 'text-orange-400' }
+      };
+
+      // ============================================================================
+      // 6. ОСНОВНОЙ ИГРОВОЙ ИНТЕРФЕЙС (HUD + CANVAS + МОДАЛЬНЫЕ ОКНА)
+      // ============================================================================
+
+      return (
+        <div className="relative w-full h-screen bg-stone-950 overflow-hidden select-none font-serif text-amber-100">
+          {/* ИГРОВОЙ ХОЛСТ HTML5 CANVAS */}
+          <canvas
+            ref={canvasRef}
+            onClick={handleCanvasTap}
+            className="w-full h-full block cursor-crosshair"
+          />
+
+          {/* КРАСНАЯ ВСПЫШКА ПРИ УДАРЕ ЧАРЛИ В ТЕМНОТЕ */}
+          {charlieFlash && (
+            <div className="fixed inset-0 bg-red-900/70 pointer-events-none z-50 flex items-center justify-center animate-pulse">
+              <div className="text-2xl sm:text-3xl font-bold text-white drop-shadow-lg tracking-widest uppercase text-center px-4">
+                👁️ УДАР ЧАРЛИ ИЗ ТЕМНОТЫ (-100 HP)!
+              </div>
+            </div>
+          )}
+
+          {/* ПРЕДУПРЕЖДЕНИЕ О ТЕМНОТЕ ИЛИ ЗАМЕРЗАНИИ */}
+          {hudState.phase === 'Night' && !hudState.inLight && !isDead && (
+            <div className="fixed top-20 left-1/2 -translate-x-1/2 z-30 bg-red-950/90 border-2 border-red-500 px-4 py-1.5 rounded-full text-xs font-bold text-red-200 animate-bounce shadow-xl text-center">
+              ⚠️ ПОЛНАЯ ТЕМНОТА! Экипируйте Факел или встаньте у Костра, иначе Чарли убьет вас!
+            </div>
+          )}
+
+          {hudState.temp <= 2 && !isDead && (
+            <div className="fixed top-28 left-1/2 -translate-x-1/2 z-30 bg-sky-950/90 border-2 border-sky-400 px-4 py-1 rounded-full text-xs font-bold text-sky-200 shadow-xl text-center">
+              ❄️ ОБМОРОЖЕНИЕ! Согрейтесь у костра или сшейте Зимнюю шапку!
+            </div>
+          )}
+
+          {/* ВСПЛЫВАЮЩИЕ УВЕДОМЛЕНИЯ (РЕПЛИКИ ПЕРСОНАЖА) */}
+          <div className="fixed top-16 left-4 z-30 flex flex-col gap-1.5 pointer-events-none max-w-xs">
+            {toastMessages.map(m => (
+              <div
+                key={m.id}
+                className="px-3 py-1.5 rounded-lg bg-stone-900/90 border border-amber-700/60 text-xs shadow-md"
+                style={{ color: m.color }}
+              >
+                {m.text}
+              </div>
+            ))}
+          </div>
+
+          {/* ВЕРХНЯЯ ЛЕВАЯ ПАНЕЛЬ: КНОПКИ КРАФТА, КАЗАНА, ПЕСОЧНИЦЫ И КОДА GDD */}
+          <div className="fixed top-3 left-3 z-20 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveTab(activeTab === 'craft' ? null : 'craft')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 text-xs font-bold shadow-lg transition ${
+                activeTab === 'craft'
+                  ? 'bg-amber-600 text-stone-950 border-amber-300'
+                  : 'bg-stone-900/90 text-amber-200 border-amber-800/80 hover:border-amber-500'
+              }`}
+            >
+              <Wrench className="w-4 h-4" />
+              <span>Крафт</span>
+              {(hudState.nearScience || hudState.nearAlchemy) && (
+                <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-emerald-500 text-stone-950 rounded-full font-extrabold">
+                  ⚗️ Наука
+                </span>
+              )}
+            </button>
+
+            {hudState.nearCrockpot && (
+              <button
+                onClick={() => setActiveTab(activeTab === 'crockpot' ? null : 'crockpot')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-orange-500 bg-orange-950/90 text-orange-200 text-xs font-bold shadow-lg animate-pulse"
+              >
+                <Utensils className="w-4 h-4" />
+                <span>Казан (Готовить)</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setActiveTab(activeTab === 'debug' ? null : 'debug')}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl border border-stone-700 bg-stone-900/85 text-stone-300 hover:text-amber-300 text-xs shadow"
+              title="Тестовая песочница (Спавн Циклопа, Смена сезона, Ресурсы)"
+            >
+              <Terminal className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Тест-Песочница</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab(activeTab === 'gdd_code' ? null : 'gdd_code')}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl border border-stone-700 bg-stone-900/85 text-stone-300 hover:text-sky-300 text-xs shadow"
+              title="Архитектура Бэкенда & Код из GDD"
+            >
+              <Code className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">GDD Архитектура</span>
+            </button>
+          </div>
+
+          {/* ВЕРХНЯЯ ПРАВАЯ ПАНЕЛЬ: 16-СЕГМЕНТНЫЕ ЧАСЫ И 3 ЖИЗНЕННЫХ ПОКАЗАТЕЛЯ */}
+          <div className="fixed top-3 right-3 z-20 flex items-start gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 sm:gap-2 bg-stone-900/90 border border-amber-900/70 p-1.5 sm:p-2 rounded-2xl shadow-xl">
+              <VitalBadge
+                label="Сытость"
+                value={hudState.hunger}
+                max={hudState.maxHunger}
+                color="#f59e0b"
+                icon="🍖"
+              />
+              <VitalBadge
+                label="Рассудок"
+                value={hudState.sanity}
+                max={hudState.maxSanity}
+                color="#38bdf8"
+                icon="🧠"
+                pulse={hudState.sanity / hudState.maxSanity < 0.2}
+              />
+              <VitalBadge
+                label="Здоровье"
+                value={hudState.hp}
+                max={hudState.maxHp}
+                color="#ef4444"
+                icon="❤️"
+                pulse={hudState.hp < 40}
+              />
+            </div>
+
+            {/* КРУГЛЫЕ 16-СЕГМЕНТНЫЕ ЧАСЫ DST */}
+            <div className="flex flex-col items-center bg-stone-900/90 border border-amber-800/80 p-1.5 sm:p-2 rounded-2xl shadow-xl">
+              <div className="relative w-14 h-14 sm:w-16 sm:h-16">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  {Array.from({ length: 16 }).map((_, idx) => {
+                    const startAngle = (idx * 360) / 16;
+                    const endAngle = ((idx + 1) * 360) / 16;
+                    const rad1 = (startAngle * Math.PI) / 180;
+                    const rad2 = (endAngle * Math.PI) / 180;
+                    const x1 = 50 + 42 * Math.cos(rad1);
+                    const y1 = 50 + 42 * Math.sin(rad1);
+                    const x2 = 50 + 42 * Math.cos(rad2);
+                    const y2 = 50 + 42 * Math.sin(rad2);
+                    const segColor = idx <= 8 ? '#eab308' : idx <= 12 ? '#ea580c' : '#1e3a8a';
+                    const isCurrent = idx === hudState.segment;
+
+                    return (
+                      <path
+                        key={idx}
+                        d={`M 50 50 L ${x1} ${y1} A 42 42 0 0 1 ${x2} ${y2} Z`}
+                        fill={segColor}
+                        stroke="#1c1917"
+                        strokeWidth={isCurrent ? '2.5' : '1'}
+                        opacity={isCurrent ? 1 : 0.72}
+                      />
+                    );
+                  })}
+                  <circle cx="50" cy="50" r="22" fill="#1c1917" stroke="#d97706" strokeWidth="2" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span className="text-[9px] text-stone-400 leading-none">ДЕНЬ</span>
+                  <span className="text-sm font-extrabold text-amber-300 leading-tight">{hudState.day}</span>
+                </div>
+              </div>
+
+              <div className="mt-1 text-center">
+                <div className={`text-[11px] font-bold ${seasonNames[hudState.season]?.color}`}>
+                  {seasonNames[hudState.season]?.icon} {seasonNames[hudState.season]?.label}
+                </div>
+                <div className="text-[10px] text-stone-400">
+                  {hudState.temp}°C • {hudState.phase === 'Day' ? '☀️' : hudState.phase === 'Dusk' ? '🌅' : '🌙'}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setTimeSpeed(prev => (prev === 1 ? 6 : 1))}
+                className="mt-1 px-2 py-0.5 rounded bg-amber-950 border border-amber-700/60 text-[10px] text-amber-300 hover:bg-amber-900"
+              >
+                Скорость: {timeSpeed}x
+              </button>
+            </div>
+          </div>
+
+          {/* МОДАЛЬНОЕ ОКНО 1: СИСТЕМА КРАФТА И ПРОТОТИПИРОВАНИЯ */}
+          {activeTab === 'craft' && (
+            <div className="fixed top-16 left-3 z-30 w-80 sm:w-96 max-h-[70vh] bg-stone-900/95 border-2 border-amber-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="p-3 bg-stone-950 border-b border-stone-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
+                    <Wrench className="w-4 h-4" /> Рецепты и Прототипы
+                  </h2>
+                  <p className="text-[11px] text-stone-400">
+                    {hudState.nearAlchemy
+                      ? '🔬 Рядом Алхимический двигатель (Ур. 2)'
+                      : hudState.nearScience
+                      ? '⚗️ Рядом Научная машина (Прототип +15 Рассудка)'
+                      : 'Ручной крафт (постройте Научную машину для новых чертежей)'}
+                  </p>
+                </div>
+                <button onClick={() => setActiveTab(null)} className="text-stone-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex gap-1 p-2 bg-stone-950/60 border-b border-stone-800 overflow-x-auto text-xs">
+                {[
+                  { id: 'all', label: 'Все' },
+                  { id: 'tools', label: '🪓 Инстр.' },
+                  { id: 'light', label: '🔥 Свет' },
+                  { id: 'science', label: '⚗️ Наука' },
+                  { id: 'survival', label: '🍲 Выжив.' },
+                  { id: 'combat', label: '🔱 Бой' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setCraftCategory(tab.id)}
+                    className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition ${
+                      craftCategory === tab.id
+                        ? 'bg-amber-600 text-stone-950 font-bold'
+                        : 'bg-stone-800 text-stone-300 hover:bg-stone-700'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-2.5 overflow-y-auto space-y-2 flex-1">
+                {CRAFTING_RECIPES.filter(r => craftCategory === 'all' || r.category === craftCategory).map(recipe => {
+                  const itemInfo = ITEMS_DB[recipe.result];
+                  const isUnlocked = hudState.unlockedBlueprints.includes(recipe.id);
+                  const stationOk =
+                    recipe.station === 'none' ||
+                    isUnlocked ||
+                    (recipe.station === 'science_machine' && (hudState.nearScience || hudState.nearAlchemy));
+
+                  const canAfford = Object.entries(recipe.cost).every(([resId, count]) => {
+                    const have = hudState.inventory
+                      .filter(i => i.id === resId)
+                      .reduce((sum, i) => sum + i.count, 0);
+                    return have >= count;
+                  });
+
+                  return (
+                    <div
+                      key={recipe.id}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                        canAfford && stationOk
+                          ? 'bg-stone-800/90 border-amber-700/70'
+                          : 'bg-stone-950/60 border-stone-800 opacity-75'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-10 h-10 rounded-lg bg-stone-900 border border-stone-700 flex items-center justify-center text-2xl shrink-0">
+                          {itemInfo.icon}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
+                            <span>{itemInfo.name}</span>
+                            {recipe.station !== 'none' && !isUnlocked && (
+                              <span className="text-[10px] px-1.5 py-0.2 bg-sky-950 text-sky-300 border border-sky-700 rounded">
+                                ⚗️ Прототип
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-stone-400 leading-tight my-0.5">{recipe.desc}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {Object.entries(recipe.cost).map(([resId, needed]) => {
+                              const have = hudState.inventory
+                                .filter(i => i.id === resId)
+                                .reduce((s, i) => s + i.count, 0);
+                              return (
+                                <span
+                                  key={resId}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                    have >= needed
+                                      ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
+                                      : 'bg-red-950/60 border-red-800 text-red-300'
+                                  }`}
+                                >
+                                  {ITEMS_DB[resId]?.icon} {ITEMS_DB[resId]?.name}: {have}/{needed}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleCraftRecipe(recipe)}
+                        disabled={!canAfford || !stationOk}
+                        className={`px-3 py-2 rounded-lg text-xs font-bold shrink-0 transition ${
+                          canAfford && stationOk
+                            ? 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow'
+                            : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                        }`}
+                      >
+                        Создать
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* МОДАЛЬНОЕ ОКНО 2: КУЛИНАРИЯ В КАЗАНЕ (CROCK POT) */}
+          {activeTab === 'crockpot' && (
+            <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 w-80 sm:w-96 bg-stone-900/95 border-2 border-orange-600 rounded-2xl shadow-2xl p-4">
+              <div className="flex items-center justify-between border-b border-stone-800 pb-2 mb-3">
+                <div>
+                  <h3 className="text-base font-bold text-orange-300 flex items-center gap-1.5">
+                    🍲 Казан (Crock Pot)
+                  </h3>
+                  <p className="text-[11px] text-stone-400">
+                    Положите ровно 4 ингредиента из инвентаря снизу
+                  </p>
+                </div>
+                <button onClick={() => setActiveTab(null)} className="text-stone-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 my-3">
+                {[0, 1, 2, 3].map(idx => {
+                  const ingId = crockSlots[idx];
+                  const db = ingId ? ITEMS_DB[ingId] : null;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        if (ingId) {
+                          givePlayerItem(ingId, 1);
+                          setCrockSlots(prev => prev.filter((_, i) => i !== idx));
+                        }
+                      }}
+                      className="h-16 rounded-xl bg-stone-950 border-2 border-dashed border-orange-800/70 flex flex-col items-center justify-center cursor-pointer hover:border-orange-400"
+                    >
+                      {db ? (
+                        <>
+                          <span className="text-2xl">{db.icon}</span>
+                          <span className="text-[9px] text-stone-300 truncate max-w-full px-1">
+                            {db.name}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-stone-600">Слот {idx + 1}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {crockSlots.length === 4 && (
+                <div className="p-2 rounded-lg bg-stone-950 border border-stone-800 text-xs text-amber-300 mb-3">
+                  Прогноз рецепта: <b>{ITEMS_DB[evaluateCrockPotRecipe(crockSlots).result]?.name}</b>
+                </div>
+              )}
+
+              <button
+                onClick={handleCookInCrockPot}
+                disabled={crockSlots.length !== 4}
+                className={`w-full py-2.5 rounded-xl font-bold text-sm transition ${
+                  crockSlots.length === 4
+                    ? 'bg-orange-500 hover:bg-orange-400 text-stone-950 shadow-lg'
+                    : 'bg-stone-800 text-stone-500 cursor-not-allowed'
+                }`}
+              >
+                🔥 Варить блюдо ({crockSlots.length}/4)
+              </button>
+
+              <div className="mt-3 pt-2 border-t border-stone-800 text-[11px] text-stone-400 space-y-1">
+                <div>🧆 <b>Тефтели (+62.5 Сытости):</b> 1 Мясо (любое) + 3 Ягоды/Моркови</div>
+                <div>🥟 <b>Вареники (+40 HP):</b> 1 Мясо + 1 Яйцо + 1 Морковь + 1 Ягода</div>
+                <div>💩 <b>Мокрое месиво:</b> если добавить ветки или несовместимые продукты</div>
+              </div>
+            </div>
+          )}
+
+          {/* МОДАЛЬНОЕ ОКНО 3: ТЕСТОВАЯ ПЕСОЧНИЦА РАЗРАБОТЧИКА */}
+          {activeTab === 'debug' && (
+            <div className="fixed top-16 left-3 z-30 w-80 bg-stone-900/95 border-2 border-amber-500 rounded-2xl shadow-2xl p-3.5 text-xs space-y-2.5">
+              <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <Terminal className="w-4 h-4" /> Песочница тестирования GDD
+                </span>
+                <button onClick={() => setActiveTab(null)} className="text-stone-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={() => {
+                    ['logs', 'twigs', 'cutgrass', 'flint', 'rocks', 'gold_nugget'].forEach(id =>
+                      givePlayerItem(id, 10)
+                    );
+                    addFloatingLog('Выдано по 10 базовых ресурсов!', '#4ade80');
+                  }}
+                  className="p-2 rounded-lg bg-emerald-950 border border-emerald-600 text-emerald-200 hover:bg-emerald-900 font-bold"
+                >
+                  📦 +10 Всех Ресурсов
+                </button>
+
+                <button
+                  onClick={() => {
+                    givePlayerItem('monster_meat', 2);
+                    givePlayerItem('berries', 4);
+                    givePlayerItem('carrot', 2);
+                    givePlayerItem('egg', 2);
+                    addFloatingLog('Выдан набор продуктов для Казана!', '#fdba74');
+                  }}
+                  className="p-2 rounded-lg bg-orange-950 border border-orange-600 text-orange-200 hover:bg-orange-900 font-bold"
+                >
+                  🥩 Еда для Казана
+                </button>
+
+                <button
+                  onClick={() => {
+                    const eng = engineRef.current;
+                    if (eng) {
+                      eng.time.segment = 13;
+                      eng.time.phase = 'Night';
+                      addFloatingLog('Наступила Ночь! Проверьте свет или атаку Чарли!', '#60a5fa');
+                    }
+                  }}
+                  className="p-2 rounded-lg bg-indigo-950 border border-indigo-500 text-indigo-200 hover:bg-indigo-900 font-bold"
+                >
+                  🌙 Включить Ночь
+                </button>
+
+                <button
+                  onClick={() => {
+                    const eng = engineRef.current;
+                    if (eng) {
+                      const seasons = ['Autumn', 'Winter', 'Spring', 'Summer'];
+                      const next = seasons[(seasons.indexOf(eng.time.season) + 1) % 4];
+                      eng.time.season = next;
+                      if (next === 'Winter') eng.time.day = 22;
+                      if (next === 'Spring') eng.time.day = 38;
+                      if (next === 'Summer') eng.time.day = 58;
+                      if (next === 'Autumn') eng.time.day = 1;
+                      addFloatingLog(`Сезон изменен: ${next}`, '#38bdf8');
+                    }
+                  }}
+                  className="p-2 rounded-lg bg-sky-950 border border-sky-600 text-sky-200 hover:bg-sky-900 font-bold"
+                >
+                  ❄️ Сменить Сезон
+                </button>
+
+                <button
+                  onClick={() => {
+                    spawnDeerclopsBoss(engineRef.current);
+                  }}
+                  className="p-2 rounded-lg bg-red-950 border border-red-600 text-red-200 hover:bg-red-900 font-bold col-span-2"
+                >
+                  🦌 Призвать Босса: Циклоп-Олень (4000 HP)
+                </button>
+
+                <button
+                  onClick={() => {
+                    const eng = engineRef.current;
+                    if (eng) {
+                      eng.player.sanity = 15;
+                      addFloatingLog('Рассудок снижен до <15%! Ждите Ползучих Ужасов!', '#c084fc');
+                    }
+                  }}
+                  className="p-2 rounded-lg bg-purple-950 border border-purple-600 text-purple-200 hover:bg-purple-900 font-bold"
+                >
+                  🧠 Безумие (&lt;15%)
+                </button>
+
+                <button
+                  onClick={() => {
+                    const eng = engineRef.current;
+                    if (eng) {
+                      eng.player.hp = eng.player.maxHp;
+                      eng.player.hunger = eng.player.maxHunger;
+                      eng.player.sanity = eng.player.maxSanity;
+                      eng.player.temp = 22;
+                      addFloatingLog('Показатели полностью восстановлены!', '#4ade80');
+                    }
+                  }}
+                  className="p-2 rounded-lg bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700 font-bold"
+                >
+                  ❤️ Исцелить всё
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* МОДАЛЬНОЕ ОКНО 4: АРХИТЕКТУРА GDD */}
+          {activeTab === 'gdd_code' && (
+            <div className="fixed inset-4 z-40 bg-stone-950/95 border-2 border-sky-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="p-3.5 bg-stone-900 border-b border-stone-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Server className="w-5 h-5 text-sky-400" />
+                  <h2 className="text-sm sm:text-base font-bold text-sky-300">
+                    Архитектура Репозитория Telegram Mini App (Node.js + Redis + PostgreSQL + WebSocket)
+                  </h2>
+                </div>
+                <button onClick={() => setActiveTab(null)} className="text-stone-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto text-xs font-mono text-stone-300 space-y-4">
+                <div className="bg-stone-900 p-3 rounded-xl border border-stone-800">
+                  <div className="text-amber-400 font-bold mb-1">1. Структура репозитория (Full-Stack TMA Replica)</div>
+                  <pre className="text-[11px] text-emerald-300 overflow-x-auto">{`dst-telegram-mini-app/
+├── client/                      # React + HTML5 Isometric Canvas / Phaser 3
+│   ├── src/
+│   │   ├── engine/GameEngine.ts # 16-сегментные часы, Чарли, 3 Vitals, Y-Sorted Изометрия
+│   │   ├── ai/MobFSM.ts         # Конечный автомат: Idle, Wander, TargetAcquired, Attack
+│   │   ├── systems/CrockPot.ts  # Приоритетный матричный алгоритм тегов еды
+│   │   └── App.tsx              # Слоты инвентаря (15 + 3 экипировки), Сенсорный Джойстик
+├── server/                      # Node.js + Socket.io + Express
+│   ├── auth/validateInitData.ts # HMAC-SHA256 валидация Telegram WebApp.initData
+│   ├── sync/WorldTickCron.ts    # Серверный тик сезонов и синхронизация в Redis
+│   └── db/schema.sql            # PostgreSQL персистентное хранение миров и инвентаря
+└── package.json`}</pre>
+                </div>
+
+                <div className="bg-stone-900 p-3 rounded-xl border border-stone-800">
+                  <div className="text-sky-400 font-bold mb-1">
+                    2. Серверная валидация Telegram WebApp.initData + Redis/Postgres Sync (server/index.ts)
+                  </div>
+                  <pre className="text-[11px] text-sky-200 overflow-x-auto">{`import crypto from 'crypto';
+import express from 'express';
+import { createClient } from 'redis';
+
+// Валидация криптографической подписи Telegram Mini App
+export function validateTelegramInitData(initData: string, botToken: string): boolean {
+  const urlParams = new URLSearchParams(initData);
+  const hash = urlParams.get('hash');
+  urlParams.delete('hash');
+  const dataCheckString = Array.from(urlParams.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => \`\${k}=\${v}\`)
+    .join('\\n');
+
+  const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
+  const calculatedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  return calculatedHash === hash;
+}
+
+// Сохранение состояния сессии в Redis (Real-time) и снепшот в PostgreSQL
+app.post('/api/world/sync', async (req, res) => {
+  const { initData, worldId, playerState, inventory } = req.body;
+  if (!validateTelegramInitData(initData, process.env.BOT_TOKEN!)) {
+    return res.status(401).json({ error: 'Invalid Telegram signature' });
+  }
+  await redis.hSet(\`world:\${worldId}:players\`, playerState.id, JSON.stringify({ playerState, inventory }));
+  res.json({ status: 'synced', timestamp: Date.now() });
+});`}</pre>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* СЕНСОРНЫЙ ДЖОЙСТИК (СЛЕВА ВНИЗУ) С ПОДДЕРЖКОЙ POINTER CAPTURE ДЛЯ TELEGRAM WEBVIEW */}
+          <div
+            className="fixed bottom-24 left-5 z-20 w-28 h-28 rounded-full bg-stone-900/55 border-2 border-amber-700/50 flex items-center justify-center touch-none"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cx = rect.left + rect.width / 2;
+              const cy = rect.top + rect.height / 2;
+              const rawX = e.clientX - cx;
+              const rawY = e.clientY - cy;
+              const dist = Math.min(40, Math.hypot(rawX, rawY));
+              const angle = Math.atan2(rawY, rawX);
+              const tx = Math.cos(angle) * dist;
+              const ty = Math.sin(angle) * dist;
+
+              joystickRef.current = {
+                active: true,
+                originX: cx,
+                originY: cy,
+                currX: tx,
+                currY: ty,
+                dx: tx / 40,
+                dy: ty / 40
+              };
+              setJoystickThumb({ x: tx, y: ty });
+            }}
+            onPointerMove={(e) => {
+              if (!joystickRef.current.active) return;
+              const ox = joystickRef.current.originX;
+              const oy = joystickRef.current.originY;
+              const rawX = e.clientX - ox;
+              const rawY = e.clientY - oy;
+              const dist = Math.min(40, Math.hypot(rawX, rawY));
+              const angle = Math.atan2(rawY, rawX);
+              const tx = Math.cos(angle) * dist;
+              const ty = Math.sin(angle) * dist;
+              joystickRef.current.currX = tx;
+              joystickRef.current.currY = ty;
+              joystickRef.current.dx = tx / 40;
+              joystickRef.current.dy = ty / 40;
+              setJoystickThumb({ x: tx, y: ty });
+            }}
+            onPointerUp={(e) => {
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              }
+              joystickRef.current = { active: false, dx: 0, dy: 0, originX: 0, originY: 0, currX: 0, currY: 0 };
+              setJoystickThumb({ x: 0, y: 0 });
+            }}
+            onPointerCancel={() => {
+              joystickRef.current = { active: false, dx: 0, dy: 0, originX: 0, originY: 0, currX: 0, currY: 0 };
+              setJoystickThumb({ x: 0, y: 0 });
+            }}
+          >
+            <div
+              className="w-11 h-11 rounded-full bg-amber-500/80 border-2 border-amber-200 shadow-lg flex items-center justify-center text-stone-950 font-bold text-xs pointer-events-none transition-transform duration-75"
+              style={{ transform: `translate(${joystickThumb.x}px, ${joystickThumb.y}px)` }}
+            >
+              ✥
+            </div>
+          </div>
+
+          {/* Кнопки действия и боя (Справа внизу) */}
+          <div className="fixed bottom-24 right-5 z-20 flex items-center gap-3">
+            <button
+              onClick={triggerContextAction}
+              className={`w-16 h-16 rounded-full border-2 flex flex-col items-center justify-center shadow-xl active:scale-95 transition ${
+                hudState.contextAction
+                  ? 'bg-amber-500 border-amber-200 text-stone-950 animate-pulse'
+                  : 'bg-stone-900/85 border-amber-800 text-amber-200'
+              }`}
+            >
+              <span className="text-xl">{hudState.contextAction?.icon || '✋'}</span>
+              <span className="text-[10px] font-extrabold uppercase">
+                {hudState.contextAction?.label || 'Действ.'}
+              </span>
+            </button>
+
+            <button
+              onClick={triggerCombatAttack}
+              className="w-16 h-16 rounded-full bg-red-900/90 hover:bg-red-800 border-2 border-red-400 text-red-100 flex flex-col items-center justify-center shadow-xl active:scale-95 transition"
+            >
+              <span className="text-xl">⚔️</span>
+              <span className="text-[10px] font-extrabold uppercase">Атака (F)</span>
+            </button>
+          </div>
+
+          {/* НИЖНЯЯ ПАНЕЛЬ ИНВЕНТАРЯ (11-14 СЛОТОВ + 3 СЛОТА ЭКИПИРОВКИ) */}
+          <div className="fixed bottom-2 left-1/2 -translate-x-1/2 z-20 max-w-[98vw] bg-stone-900/95 border-2 border-amber-900/90 rounded-2xl p-1.5 shadow-2xl flex items-center gap-2 overflow-x-auto">
+            <div className="flex items-center gap-1">
+              {Array.from({ length: hudState.equip.body?.id === 'backpack' ? 14 : 11 }).map((_, idx) => {
+                const item = hudState.inventory[idx];
+                const db = item ? ITEMS_DB[item.id] : null;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => item && handleUseInventoryItem(idx)}
+                    title={db ? `${db.name} (Нажмите, чтобы использовать/экипировать)` : 'Пустой слот'}
+                    className={`relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl border flex flex-col items-center justify-center cursor-pointer transition shrink-0 ${
+                      item
+                        ? 'bg-stone-800 hover:bg-stone-700 border-amber-700/80'
+                        : 'bg-stone-950/70 border-stone-800'
+                    }`}
+                  >
+                    {db && (
+                      <>
+                        <span className="text-xl leading-none">{db.icon}</span>
+                        <span className="text-[9px] text-stone-300 truncate max-w-[42px] mt-0.5">
+                          {db.name.split(' ')[0]}
+                        </span>
+                        {item.count > 1 && (
+                          <span className="absolute -top-1 -right-1 px-1 rounded-full bg-amber-600 text-stone-950 font-extrabold text-[10px]">
+                            {item.count}
+                          </span>
+                        )}
+                        {item.durability && (
+                          <div className="absolute bottom-0.5 left-1 right-1 h-1 bg-stone-950 rounded overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-400"
+                              style={{ width: `${Math.min(100, (item.durability / (db.durability || 100)) * 100)}%` }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="w-0.5 h-10 bg-amber-900/60 shrink-0" />
+
+            {/* 3 СЛОТА ЭКИПИРОВКИ: РУКА, ТЕЛО, ГОЛОВА */}
+            <div className="flex items-center gap-1 shrink-0">
+              {[
+                { slot: 'hand', label: 'Рука', placeholder: '🤚' },
+                { slot: 'body', label: 'Тело', placeholder: '👕' },
+                { slot: 'head', label: 'Голова', placeholder: '🎩' }
+              ].map(({ slot, label, placeholder }) => {
+                const eq = hudState.equip[slot];
+                const db = eq ? ITEMS_DB[eq.id] : null;
+                return (
+                  <div
+                    key={slot}
+                    onClick={() => {
+                      if (eq && engineRef.current) {
+                        if (givePlayerItem(eq.id, 1)) {
+                          engineRef.current.player.equip[slot] = null;
+                        }
+                      }
+                    }}
+                    title={`${label}: ${db ? db.name : 'Пусто'}`}
+                    className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-amber-950/60 border-2 border-amber-600/80 flex flex-col items-center justify-center cursor-pointer hover:bg-amber-900/50"
+                  >
+                    <span className="text-xl leading-none">{db ? db.icon : placeholder}</span>
+                    <span className="text-[8px] uppercase text-amber-300/80 font-bold mt-0.5">
+                      {label}
+                    </span>
+                    {eq?.durability && db?.durability && (
+                      <div className="absolute bottom-0.5 left-1 right-1 h-1 bg-stone-950 rounded overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400"
+                          style={{ width: `${Math.min(100, (eq.durability / db.durability) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ЭКРАН СМЕРТИ / ВОСКРЕШЕНИЯ ПРИЗРАКА */}
+          {isDead && (
+            <div className="fixed inset-0 z-50 bg-stone-950/90 flex items-center justify-center p-4">
+              <div className="max-w-md w-full bg-stone-900 border-2 border-red-700 rounded-2xl p-6 text-center shadow-2xl">
+                <div className="text-5xl mb-2">👻</div>
+                <h2 className="text-2xl font-bold text-red-400 uppercase tracking-wider">
+                  Вы превратились в призрака!
+                </h2>
+                <p className="text-xs text-stone-300 mt-2">
+                  {selectedChar.name} прожил в Константе <b>{hudState.day} дн.</b> Константа беспощадна, но Алтарь Воскрешения готов вернуть вас к жизни.
+                </p>
+
+                <div className="flex gap-3 mt-5">
+                  <button
+                    onClick={() => {
+                      const eng = engineRef.current;
+                      if (eng) {
+                        eng.player.hp = Math.round(eng.player.maxHp * 0.75);
+                        eng.player.hunger = Math.round(eng.player.maxHunger * 0.6);
+                        eng.player.sanity = Math.round(eng.player.maxSanity * 0.5);
+                        eng.player.x = 0;
+                        eng.player.y = 30;
+                        eng.time.segment = 0;
+                        eng.time.phase = 'Day';
+                        setIsDead(false);
+                        addFloatingLog('Вы воскресли у Постерна Константы!', '#4ade80');
+                      }
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs uppercase"
+                  >
+                    ⚡ Воскреснуть у Алтаря
+                  </button>
+                  <button
+                    onClick={() => setSelectedChar(null)}
+                    className="flex-1 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs uppercase border border-stone-700"
+                  >
+                    Сменить Героя
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
