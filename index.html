@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Don't Starve Together TMA</title>
+  
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- Tailwind CSS для стилей -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Babel для компиляции JSX прямо в браузере -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Карта импортов, чтобы работали import React и import из lucide-react -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+      }
+    }
+  </script>
+</head>
+<body class="bg-black text-white m-0 p-0 overflow-hidden select-none">
+  <div id="root"></div>
+
+  <!-- ТВОЙ КОД ИГРЫ ИДЁТ СЮДА -->
+  <script type="text/babel" data-type="module">
+    import { createRoot } from 'react-dom/client';
+
+    // === 1. ВСТАВЬ ВЕСЬ КОД ИЗ App.jsx СЮДА ===
+
+
+    // === 2. ЗАПУСК ПРИЛОЖЕНИЯ В КОНЦЕ ===
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
