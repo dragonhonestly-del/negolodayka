@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <!-- Строгая блокировка зума и свайпов для мобильных устройств -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Константа - TMA</title>
+    
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* Базовые стили для Telegram Mini App: отключаем скролл, выделение и pull-to-refresh */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050505; /* Черный фон для погружения в темноту */
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Корневой контейнер, куда React вмонтирует Canvas и весь UI -->
+    <div id="ui-root" class="w-full h-full"></div>
+
+    <!-- ========================================== -->
+    <!-- 1. ВНЕШНИЕ БИБЛИОТЕКИ И API                  -->
+    <!-- ========================================== -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- ========================================== -->
+    <!-- 2. БАЗЫ ДАННЫХ (Конфиги без логики)          -->
+    <!-- ========================================== -->
+    <script src="data/biomes.js"></script>
+    <script src="data/characters.js"></script>
+    <script src="data/items.js"></script>
+    <script src="data/recipes.js"></script>
+
+    <!-- ========================================== -->
+    <!-- 3. ДВИЖОК ИГРЫ (Строгий порядок загрузки)    -->
+    <!-- ========================================== -->
+    <script src="engine/audio.js"></script>
+    <script src="engine/storage.js"></script>
+    <script src="engine/map.js"></script>
+    <script src="engine/renderer.js"></script>
+    <script src="engine/mobs.js"></script>
+    <script src="engine/loop.js"></script>
+
+    <!-- ========================================== -->
+    <!-- 4. ИНТЕРФЕЙС И ЗАПУСК (Обязательно text/babel) -->
+    <!-- ========================================== -->
+    <script type="text/babel" src="ui/app.js"></script>
+
+    <!-- Инициализация Telegram API -->
+    <script>
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand(); // Разворачиваем апп на весь экран
+            // Фиксируем цвета заголовка под мрачный стиль
+            window.Telegram.WebApp.setHeaderColor('#050505');
+            window.Telegram.WebApp.setBackgroundColor('#050505');
+        }
+    </script>
+</body>
+</html>
